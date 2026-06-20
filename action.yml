@@ -1,0 +1,94 @@
+name: "Heimdall Build"
+description: "Build, bundle, sign and notarize a Heimdall (Odin) desktop app."
+author: "heimdall"
+branding:
+  icon: "package"
+  color: "blue"
+
+inputs:
+  command:
+    description: "heimdall subcommand + args to run (e.g. 'build', 'bundle --sign --notarize')"
+    default: "bundle"
+  working-directory:
+    description: "Directory containing the Heimdall app (heimdall.toml)"
+    default: "."
+  odin-release:
+    description: "Odin release tag to install (passed to laytan/setup-odin)"
+    default: "dev-2026-06"
+
+  # Code signing (all optional; omit to skip a step).
+  sign-identity:
+    description: "codesign identity, e.g. 'Developer ID Application: Name (TEAMID)'. Sets HEIMDALL_SIGN_IDENTITY."
+    default: ""
+  macos-cert-p12:
+    description: "base64-encoded .p12 signing certificate"
+    default: ""
+  macos-cert-password:
+    description: "password for the .p12 certificate"
+    default: ""
+  keychain-password:
+    description: "password for the temporary CI keychain"
+    default: "heimdall-ci"
+
+  # Notarization (all optional).
+  apple-id:
+    description: "Apple ID for notarization"
+    default: ""
+  apple-team-id:
+    description: "Apple Developer Team ID"
+    default: ""
+  apple-app-password:
+    description: "app-specific password for notarization"
+    default: ""
+  notary-profile:
+    description: "name for the stored notarytool credential profile"
+    default: "heimdall-notary"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Odin
+      uses: laytan/setup-odin@v2
+      with:
+        release: ${{ inputs.odin-release }}
+
+    - name: Install Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Build heimdall CLI
+      shell: bash
+      run: |
+        odin build "${{ github.action_path }}/cli" -out:"$RUNNER_TEMP/heimdall" -o:speed
+        echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+    - name: Import signing certificate
+      if: ${{ inputs.macos-cert-p12 != '' }}
+      shell: bash
+      env:
+        P12: ${{ inputs.macos-cert-p12 }}
+        P12_PW: ${{ inputs.macos-cert-password }}
+        KC_PW: ${{ inputs.keychain-password }}
+      run: |
+        echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+        security create-keychain -p "$KC_PW" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "$KC_PW" build.keychain
+        security import "$RUNNER_TEMP/cert.p12" -k build.keychain -P "$P12_PW" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" build.keychain
+
+    - name: Store notarization credentials
+      if: ${{ inputs.apple-id != '' }}
+      shell: bash
+      run: |
+        xcrun notarytool store-credentials "${{ inputs.notary-profile }}" \
+          --apple-id "${{ inputs.apple-id }}" \
+          --team-id "${{ inputs.apple-team-id }}" \
+          --password "${{ inputs.apple-app-password }}"
+
+    - name: Run heimdall
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        HEIMDALL_SIGN_IDENTITY: ${{ inputs.sign-identity }}
+        HEIMDALL_NOTARY_PROFILE: ${{ inputs.notary-profile }}
+      run: heimdall ${{ inputs.command }}

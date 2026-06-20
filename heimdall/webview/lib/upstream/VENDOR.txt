@@ -1,0 +1,4 @@
+webview/webview
+commit: cbbdee44afff22867de9fd88a9fc8350d9bdd399
+version: 0.12.0
+vendored: 2026-06-19

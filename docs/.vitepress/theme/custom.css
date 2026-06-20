@@ -1,0 +1,63 @@
+/* Heimdall brand — midnight indigo base, gold accent (Heimdall the golden),
+   a faint aurora glow nodding to the Bifröst bridge. */
+
+:root {
+  /* Gold, darkened enough to stay readable as link text on white. */
+  --vp-c-brand-1: #a9731a;
+  --vp-c-brand-2: #c2871f;
+  --vp-c-brand-3: #d4942a;
+  --vp-c-brand-soft: rgba(212, 148, 42, 0.14);
+  --vp-c-brand-softer: rgba(212, 148, 42, 0.08);
+
+  /* Hero wordmark — a gold gradient. */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #f4cf6a 20%, #d4942a 70%, #b97e1d);
+
+  /* Soft golden→aurora glow behind the hero logo. */
+  --vp-home-hero-image-background-image: radial-gradient(
+    circle at 50% 45%,
+    rgba(244, 207, 106, 0.30),
+    rgba(56, 189, 248, 0.10) 60%,
+    transparent 75%
+  );
+  --vp-home-hero-image-filter: blur(56px);
+
+  --vp-button-brand-text: #1b1206;
+  --vp-button-brand-hover-text: #1b1206;
+}
+
+.dark {
+  /* Brighter gold reads better on the dark background. */
+  --vp-c-brand-1: #e8b339;
+  --vp-c-brand-2: #d99a2b;
+  --vp-c-brand-3: #c9851f;
+  --vp-c-brand-soft: rgba(232, 179, 57, 0.16);
+  --vp-c-brand-softer: rgba(232, 179, 57, 0.09);
+
+  /* A touch of midnight-indigo in the dark surfaces. */
+  --vp-c-bg: #0f1421;
+  --vp-c-bg-alt: #0b0f1a;
+  --vp-c-bg-soft: #141b2b;
+
+  --vp-home-hero-image-background-image: radial-gradient(
+    circle at 50% 45%,
+    rgba(232, 179, 57, 0.26),
+    rgba(56, 189, 248, 0.12) 60%,
+    transparent 75%
+  );
+}
+
+/* A thin Bifröst ribbon under the top nav. */
+.VPNav {
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.VPNavBar.has-sidebar .content,
+.VPNav::after {
+  content: '';
+}
+.VPNav::after {
+  display: block;
+  height: 2px;
+  background: linear-gradient(90deg, #d4942a, #f4cf6a, #38bdf8, #a78bfa, #d4942a);
+  opacity: 0.55;
+}

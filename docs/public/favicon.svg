@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Heimdall">
+  <defs>
+    <linearGradient id="hd-gold" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4CF6A"/>
+      <stop offset="1" stop-color="#D99A2B"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#131A2A"/>
+  <g stroke="url(#hd-gold)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M9 9 V24"/>
+    <path d="M23 9 V24"/>
+    <path d="M9 17 Q16 9.5 23 17"/>
+  </g>
+  <circle cx="16" cy="7.4" r="1.5" fill="url(#hd-gold)"/>
+</svg>

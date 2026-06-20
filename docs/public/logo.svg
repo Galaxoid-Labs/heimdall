@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-label="Heimdall">
+  <defs>
+    <linearGradient id="hd-gold" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4CF6A"/>
+      <stop offset="1" stop-color="#C9851F"/>
+    </linearGradient>
+  </defs>
+  <!-- The Bifröst bridge between two pillars (Odin ↔ web) — also a runic H. -->
+  <g stroke="url(#hd-gold)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 8 V25"/>
+    <path d="M24 8 V25"/>
+    <path d="M8 17 Q16 8.5 24 17"/>
+  </g>
+  <!-- The watchman's eye / the watch-point above the bridge. -->
+  <circle cx="16" cy="6.2" r="1.7" fill="url(#hd-gold)"/>
+</svg>
