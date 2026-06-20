@@ -1,20 +1,22 @@
 package main
 
-import "core:encoding/json"
 import "core:fmt"
 import "core:os"
 import "core:strings"
 
-// `heimdall generate-bindings [pkg] [--out <path>] [-- <extra odin flags>]`
-// Build the app in schema-dump mode, run it to get the command schema as JSON,
-// and write a typed .d.ts. Optional and additive — untyped invoke needs none of
-// this.
+// `heimdall generate-bindings [pkg] [--out <base>] [-- <extra odin flags>]`
+// Build the app in schema-dump mode and write the typed client (<base>.js +
+// <base>.d.ts). Optional and additive — untyped `window.heimdall.invoke` needs
+// none of this. `dev` and `build` run this automatically when `bindings` is set
+// in heimdall.toml.
 //
-//   heimdall generate-bindings . --out web/bindings.d.ts
-//   heimdall generate-bindings examples/hello --out /tmp/b.d.ts -- -collection:src=.
+//   heimdall generate-bindings
+//   heimdall generate-bindings . --out web/src/heimdall.gen
+//   heimdall generate-bindings examples/hello --out /tmp/b -- -collection:src=.
 cmd_generate_bindings :: proc(args: []string) {
+	p := load_project()
 	pkg := "."
-	out := "web/bindings.d.ts"
+	out := p.bindings if p.bindings != "" else "web/src/heimdall.gen"
 	extra := make([dynamic]string, context.temp_allocator)
 	pos := make([dynamic]string, context.temp_allocator)
 
@@ -42,40 +44,35 @@ cmd_generate_bindings :: proc(args: []string) {
 		pkg = pos[0]
 	}
 
-	bin := "/tmp/heimdall_schema_dump"
-	build_cmd := make([dynamic]string, context.temp_allocator)
-	append(&build_cmd, "odin", "build", pkg, "-define:HEIMDALL_SCHEMA=true", fmt.tprintf("-out:%s", bin))
-	for e in extra {
-		append(&build_cmd, e)
+	// `--out` is a base path; tolerate a trailing extension if the user added one.
+	out = strip_client_ext(out)
+
+	// Fold the project's -collection into the odin flags if the user didn't pass one.
+	if p.collection != "" && !has_collection_flag(extra[:]) {
+		append(&extra, fmt.tprintf("-collection:%s", p.collection))
 	}
 
-	fmt.printfln("heimdall: building schema binary (%s)...", pkg)
-	br := run_capture(build_cmd[:], allocator = context.temp_allocator)
-	if !br.ok {
-		fmt.eprintfln("heimdall generate-bindings: schema build failed:\n%s%s", br.out, br.err)
+	if !write_client_bindings(".", pkg, out, p.import_path, extra[:]) {
 		os.exit(1)
 	}
+}
 
-	rr := run_capture({bin}, allocator = context.temp_allocator)
-	if !rr.ok {
-		fmt.eprintfln("heimdall generate-bindings: schema run failed:\n%s%s", rr.out, rr.err)
-		os.exit(1)
+@(private = "file")
+strip_client_ext :: proc(path: string) -> string {
+	for ext in ([?]string{".d.ts", ".js", ".ts"}) {
+		if strings.has_suffix(path, ext) {
+			return path[:len(path) - len(ext)]
+		}
 	}
+	return path
+}
 
-	schema: Schema
-	if uerr := json.unmarshal(transmute([]u8)rr.out, &schema, allocator = context.temp_allocator);
-	   uerr != nil {
-		fmt.eprintfln("heimdall generate-bindings: bad schema JSON: %v\n%s", uerr, rr.out)
-		os.exit(1)
+@(private = "file")
+has_collection_flag :: proc(flags: []string) -> bool {
+	for f in flags {
+		if strings.has_prefix(f, "-collection:") {
+			return true
+		}
 	}
-
-	dts := generate_dts(schema, context.temp_allocator)
-	if werr := os.write_entire_file(out, transmute([]u8)dts); werr != nil {
-		fmt.eprintfln("heimdall generate-bindings: write failed: %v", werr)
-		os.exit(1)
-	}
-
-	n := 0
-	for svc in schema.services {n += len(svc.commands)}
-	fmt.printfln("heimdall generate-bindings: %d command(s) -> %s", n, out)
+	return false
 }

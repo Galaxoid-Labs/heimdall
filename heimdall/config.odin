@@ -13,10 +13,11 @@ HEIMDALL_DEV :: #config(HEIMDALL_DEV, false)
 // without opening a window. (Wired in Phase 6.)
 HEIMDALL_SCHEMA :: #config(HEIMDALL_SCHEMA, false)
 
-// Backend selection. On macOS the native WKWebView backend is the DEFAULT;
-// HEIMDALL_WEBVIEW forces the cross-platform webview/webview backend instead.
-// Linux and Windows always use webview/webview until their native backends land.
-//   odin build . -define:HEIMDALL_WEBVIEW=true   # opt out of native on macOS
+// Backend selection. On macOS (WKWebView) and Linux (WebKitGTK) the native
+// backend is the DEFAULT; HEIMDALL_WEBVIEW forces the cross-platform
+// webview/webview backend instead. Windows uses webview/webview until its native
+// backend lands.
+//   odin build . -define:HEIMDALL_WEBVIEW=true   # opt out of native
 HEIMDALL_WEBVIEW :: #config(HEIMDALL_WEBVIEW, false)
 
 VERSION :: "0.0.1"

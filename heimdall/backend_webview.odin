@@ -33,6 +33,7 @@ webview_backend_create :: proc(app: ^App, debug: bool) -> bool {
 		impl      = impl,
 		set_title = wvb_set_title,
 		set_size  = wvb_set_size,
+		window_op = wvb_window_op,
 		navigate  = wvb_navigate,
 		set_html  = wvb_set_html,
 		init_js   = wvb_init_js,
@@ -92,6 +93,17 @@ wvb_reply :: proc(app: ^App, id: Request_Id, ok: bool, json: string) {
 	status: c.int = 0 if ok else 1
 	cjson := strings.clone_to_cstring(json, context.temp_allocator)
 	wv.resolve(handle(app), transmute(cstring)id, status, cjson)
+}
+
+// webview/webview's C API has no window-state control (minimize/maximize/etc.),
+// so most ops are no-ops on this fallback backend — full window control needs a
+// native backend. Only Close maps (stop the loop).
+@(private = "file")
+wvb_window_op :: proc(app: ^App, op: Window_Op) {
+	#partial switch op {
+	case .Close:
+		wv.terminate(handle(app))
+	}
 }
 
 @(private = "file")

@@ -7,9 +7,11 @@ overrides** so you only repeat what actually differs between platforms.
 ```toml
 name    = "myapp"
 web_dir = "web"
+dist_dir  = "web/dist"                 # frontend build output (embedded)
 dev_url = "http://localhost:5173"
 dev_cmd   = "bun run dev"
 build_cmd = "bun run build"
+bindings  = "web/src/heimdall.gen"     # typed JS client base; dev/build regenerate it
 
 [bundle]                              # common to every platform
 identifier   = "com.example.myapp"    # required to bundle (reverse-DNS)
@@ -41,7 +43,8 @@ common, so simple projects stay simple.
 
 ## Keys
 
-**Top-level** — `name`, `web_dir`, `dist_dir`, `dev_cmd`, `build_cmd`, `dev_url`.
+**Top-level** — `name`, `web_dir`, `dist_dir`, `dev_cmd`, `build_cmd`, `dev_url`,
+`bindings` (typed-client base path; omit to disable auto-generation).
 
 **`[bundle]`** — `identifier` (required), `version`, `build`, `display_name`,
 `icon`, plus `[bundle.macos]` `min_macos` / `category`.

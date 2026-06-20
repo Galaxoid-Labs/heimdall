@@ -109,8 +109,9 @@ See `action.yml` for the exact commands.
 
 ## Other platforms
 
-- **Linux** — no signing step (no OS-level requirement). `heimdall bundle` is
-  macOS-only today; Linux packaging (AppImage/.deb) is future work.
+- **Linux** — no signing step (no OS-level requirement). `heimdall bundle`
+  produces both a `.deb` and a `.rpm` (see [Packaging](./guide/packaging.md));
+  run it on a Linux runner with `dpkg-deb` + `rpmbuild` available.
 - **Windows** — Authenticode signing via `signtool` is stubbed (`heimdall sign`
   has the Windows code path reserved); the WebView2 backend + `.exe` packaging
   are future work.

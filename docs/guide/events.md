@@ -17,7 +17,7 @@ The payload is any JSON-marshalable Odin value.
 ## Subscribe in JS
 
 ```js
-const { on } = window.__HEIMDALL__
+const { on } = window.heimdall          // or: import { on } from "./heimdall.gen.js"
 
 const off = on("file.progress", p => {
     updateBar(p.read / p.total)
@@ -26,6 +26,9 @@ const off = on("file.progress", p => {
 // later, to stop listening:
 off()
 ```
+
+(`window.__HEIMDALL__` still works as an alias.) The generated typed client also
+re-exports `on`, so you can import everything from one place.
 
 ## From a worker thread
 

@@ -37,6 +37,10 @@ cmd_build :: proc(args: []string) {
 // Reused by `heimdall bundle`. `webview` forces the webview/webview backend
 // (native is the default on macOS). Returns false on any step failure.
 build_binary :: proc(p: Project, webview: bool, skip_frontend: bool, out: string) -> bool {
+	// 0) Refresh the typed client (if enabled) before the frontend build, since the
+	//    frontend may import it.
+	maybe_regenerate_bindings(p)
+
 	// 1) Frontend production build (in web_dir).
 	if !skip_frontend {
 		fmt.printfln("heimdall build: frontend (%s) in %s", p.build_cmd, p.web_dir)

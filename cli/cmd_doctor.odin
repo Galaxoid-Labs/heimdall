@@ -38,15 +38,15 @@ cmd_doctor :: proc(args: []string) {
 			&all_ok,
 		)
 	} else when ODIN_OS == .Linux {
-		// WebKitGTK 4.1 dev package is the link dep.
+		// The native Linux backend is GTK4 + libadwaita + webkitgtk-6.0.
 		pc := run_capture(
-			{"pkg-config", "--exists", "webkit2gtk-4.1"},
+			{"pkg-config", "--exists", "webkitgtk-6.0 libadwaita-1 gtk4"},
 			allocator = context.temp_allocator,
 		)
 		check(
-			"webkit2gtk-4.1 (dev)",
+			"webkitgtk-6.0 + libadwaita + gtk4 (dev)",
 			pc.ok,
-			"install the webkit2gtk-4.1 development package (e.g. libwebkit2gtk-4.1-dev)",
+			"install the GTK4 WebKit dev packages — Fedora: `sudo dnf install webkitgtk6.0-devel libadwaita-devel gtk4-devel`; Debian/Ubuntu: `sudo apt install libwebkitgtk-6.0-dev libadwaita-1-dev libgtk-4-dev`",
 			&all_ok,
 		)
 	} else when ODIN_OS == .Windows {

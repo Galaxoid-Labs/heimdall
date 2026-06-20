@@ -27,9 +27,20 @@ App_Config :: struct {
 	width, height: int,
 	resizable:     bool,
 	dev_url:       string,             // dev builds point the webview here (bundler HMR)
-	icon:          []u8,               // embedded PNG (used by native backends later)
+	icon:          []u8,               // embedded PNG — macOS Dock icon at runtime (Windows later); Linux/GTK4 has no per-window raw-bytes icon, so installed apps get it from the bundle's .desktop instead
 	assets:        map[string]Asset,   // prod builds serve these (from `embed`)
 	menu:          []Menu_Item,        // custom menu bar (native backend; see menu.odin)
+
+	// Initial window state (all optional; applied by the native backend at create).
+	// Some are best-effort per platform — e.g. `center`/`always_on_top` are no-ops
+	// under Wayland, where a client can't position or raise its own window.
+	min_width:     int,                // minimum window size (0 = none)
+	min_height:    int,
+	maximized:     bool,               // start maximized
+	fullscreen:    bool,               // start fullscreen
+	always_on_top: bool,               // keep above other windows (best-effort)
+	center:        bool,               // center on screen at startup (best-effort)
+	hidden:        bool,               // start hidden; show later with window_show
 
 	// Lifecycle hooks. All optional (nil == skip).
 	on_startup:    proc(app: ^App) -> Error, // after shell init, before frontend loads; Error aborts run
@@ -54,6 +65,12 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 	app.event_allocator = context.allocator
 	app.registry = make(map[string]Thunk, 16, context.allocator)
 
+	// Built-in `win` window-control service. Registered before the schema-dump
+	// early return so it also lands in generated bindings (the typed `win`
+	// namespace); its handlers only touch the backend at runtime, never in schema
+	// mode.
+	register_window_service(app)
+
 	// Schema-dump mode: no native shell (no display needed). The registry still
 	// gets populated by service()/command(); `run` dumps it.
 	when HEIMDALL_SCHEMA {
@@ -65,13 +82,16 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 		debug = true
 	}
 
-	// Select the backend. On macOS the native WKWebView backend is the default;
-	// -define:HEIMDALL_WEBVIEW=true forces the cross-platform webview/webview
-	// backend instead. Other platforms use webview/webview until their native
-	// backends land. Both implement the same vtable, so nothing else changes.
+	// Select the backend. On macOS (WKWebView) and Linux (WebKitGTK) the native
+	// backend is the default; -define:HEIMDALL_WEBVIEW=true forces the
+	// cross-platform webview/webview backend instead. Windows uses webview/webview
+	// until its native backend lands. All implement the same vtable, so nothing
+	// else changes.
 	ok: bool
 	when ODIN_OS == .Darwin && !HEIMDALL_WEBVIEW {
 		ok = darwin_backend_create(app, debug)
+	} else when ODIN_OS == .Linux && !HEIMDALL_WEBVIEW {
+		ok = linux_backend_create(app, debug)
 	} else {
 		ok = webview_backend_create(app, debug)
 	}
@@ -130,8 +150,11 @@ run :: proc(app: ^App) {
 		if len(app.cfg.assets) > 0 {
 			if app.backend.serves_assets {
 				// Native backend serves the asset map over its own app:// scheme;
-				// no loopback server needed.
-				navigate(app, "app://localhost/index.html")
+				// no loopback server needed. Navigate to the ROOT (not
+				// /index.html) so SPA client routers (SvelteKit, etc.) see
+				// location.pathname == "/" and match their index route instead of
+				// rendering a 404. The scheme handler maps "/" -> index.html.
+				navigate(app, "app://localhost/")
 			} else {
 				srv, url, serr := start_asset_server(app, &app.cfg.assets)
 				if serr == nil {

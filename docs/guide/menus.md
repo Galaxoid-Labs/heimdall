@@ -1,12 +1,22 @@
 # Menus
 
-Define a native macOS menu bar by setting `menu` on `App_Config`. Heimdall adds
-the standard **Application**, **Edit**, and **Window** menus automatically — you
-just describe your own (File, View, Help, …).
+Define a native menu bar by setting `menu` on `App_Config` — you describe your own
+menus (File, View, Help, …) and heimdall renders them per platform.
 
-> Native menus are a **native-backend** feature. On macOS the native backend is
-> the default, so menus just work. (If you opt into the webview/webview backend
-> with `--webview`, it has no menu support and ignores `menu`.)
+> Native menus are a **native-backend** feature (the default on macOS and Linux).
+> Platform behavior differs where it should:
+>
+> - **macOS** — a global menu bar. The standard **Application**, **Edit**, and
+>   **Window** menus are added automatically (Edit is what makes ⌘C/⌘V work in
+>   WKWebView); your menus are appended.
+> - **Linux** — an in-window GTK menu bar showing **only your menus** (no menu bar
+>   appears if you set none — WebKitGTK already provides copy/paste + a context
+>   menu). Role items map to GTK/WebKit where one exists; macOS-only roles
+>   (About, Hide, Show All, Zoom) are skipped.
+>
+> If you opt into the webview/webview backend with `--webview`, it has no menu
+> support and ignores `menu`. Use `"CmdOrCtrl+…"` accelerators for cross-platform
+> shortcuts.
 
 ## Define menus
 
@@ -35,7 +45,7 @@ Each top-level entry becomes a menu; its `submenu` holds the items.
 emits a `"menu"` event with that id. Handle it in your frontend:
 
 ```js
-const { on } = window.__HEIMDALL__
+import { on } from "./heimdall.gen.js"   // or: const { on } = window.heimdall
 on("menu", e => {
     if (e.id === "file.open") openFileDialog()
     if (e.id === "file.new")  newDocument()

@@ -28,8 +28,8 @@ features:
     details: JS calls Odin and awaits a result (invoke); Odin pushes events to JS (emit / on). Plain JSON.
   - title: Fast inner loop
     details: heimdall dev rebuilds and relaunches in a blink — the main reason this is written in Odin.
-  - title: Native when you want it
-    details: Runs on the tiny webview/webview library by default, or a hand-written native macOS WKWebView shell.
+  - title: Native by default
+    details: A hand-written native shell — WKWebView on macOS, GTK4 + libadwaita on Linux — with a webview/webview fallback (--webview).
   - title: Package & sign
-    details: heimdall bundle makes a macOS .app; sign and notarize for distribution, with a ready-made CI action.
+    details: heimdall bundle makes a macOS .app (sign + notarize) or Linux .deb + .rpm, with a ready-made CI action.
 ---

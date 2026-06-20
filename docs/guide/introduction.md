@@ -14,8 +14,9 @@ greet :: proc(s: ^Greeting, args: Greet_Args) -> (Greet_Result, hd.Error) {
 }
 ```
 ```js
-// JS: call it
-const { message } = await invoke("greeting.greet", { name: "Jake" })
+// JS: call it (typed client generated from your Odin types)
+import { greeting } from "./heimdall.gen.js"
+const { message } = await greeting.greet({ name: "Jake" })
 ```
 
 ## Why Heimdall
@@ -29,9 +30,10 @@ const { message } = await invoke("greeting.greet", { name: "Jake" })
   pushes events to JS (`emit`/`on`). Both are plain JSON. That's the whole API.
 - **Fast inner loop.** `heimdall dev` rebuilds and relaunches quickly — the main
   reason this is written in Odin.
-- **Native when you want it.** Runs on the tiny cross-platform
-  [webview/webview](https://github.com/webview/webview) library by default, or a
-  hand-written native backend (macOS WKWebView, the default on macOS).
+- **Native when you want it.** A hand-written native backend is the default —
+  WKWebView on macOS, WebKitGTK on Linux (custom `app://` scheme, native menus,
+  enforced `should_quit`). Opt into the tiny cross-platform
+  [webview/webview](https://github.com/webview/webview) library with `--webview`.
 
 ## How it works
 
@@ -39,7 +41,7 @@ Three layers, one boundary:
 
 ```
 WEB  (your frontend)   invoke("svc.cmd", {...})  ──►   BRIDGE (Odin)
-  window.__HEIMDALL__   on("event", handler)      ◄──   your procs
+  window.heimdall       on("event", handler)      ◄──   your procs
                                                          │
                                                          ▼
                                               NATIVE SHELL (window + webview)

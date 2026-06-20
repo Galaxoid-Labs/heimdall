@@ -17,7 +17,8 @@ greet :: proc(s: ^Greeting, args: Greet_Args) -> (Greet_Result, hd.Error) {
 }
 ```
 ```js
-const { message } = await invoke("greeting.greet", { name: "Jake" })
+import { greeting } from "./heimdall.gen.js"           // typed client (generated)
+const { message } = await greeting.greet({ name: "Jake" })
 ```
 
 ---
@@ -39,13 +40,25 @@ Needs [Odin](https://odin-lang.org/docs/install/) and [Bun](https://bun.sh)
 (`heimdall doctor` checks your setup).
 
 ```sh
-odin build cli -out:heimdall -o:speed     # build the CLI (from this repo)
-./heimdall new myapp --framework ./heimdall   # scaffold an app
-cd myapp && heimdall dev                  # a window opens, wired to Odin
+# Build the CLI. The root `heimdall/` is the framework package, so name the
+# binary `heimdall-cli` and put it on PATH as `heimdall`.
+odin build cli -out:heimdall-cli -o:speed
+install -Dm755 heimdall-cli ~/.local/bin/heimdall
+
+export HEIMDALL_HOME="$PWD"        # lets `new` find the framework to vendor
+heimdall new myapp                 # vanilla frontend (or --frontend sveltekit)
+cd myapp && heimdall dev           # a window opens, wired to Odin
 ```
 
+Pick a frontend with `--frontend`: `vanilla` (dependency-free, offline) or
+`sveltekit` (runs the official `sv create` — you pick template + TypeScript — and
+heimdall wires it for static embedding). For SvelteKit: `--pm bun|npm|pnpm|yarn|deno`
+(default bun) and `--add <sv-addon>` (repeatable) for Svelte add-ons, e.g.
+`--add tailwindcss=plugins:typography`. heimdall adds the static adapter itself —
+don't add `sveltekit-adapter`.
+
 Edit your Odin or frontend and `dev` reloads. Ship with `heimdall build` (a single
-binary) or `heimdall bundle` (a macOS `.app`).
+binary) or `heimdall bundle` (a macOS `.app`, or `.deb` + `.rpm` on Linux).
 
 ---
 
@@ -53,7 +66,7 @@ binary) or `heimdall bundle` (a macOS `.app`).
 
 ```
 WEB  (your frontend)   invoke("svc.cmd", {...})  ──►   BRIDGE (Odin)
-  window.__HEIMDALL__   on("event", handler)      ◄──   your procs
+  window.heimdall       on("event", handler)      ◄──   your procs
 ```
 
 The web layer never touches the OS. Anything privileged goes through a **command**
@@ -90,8 +103,12 @@ hd.run(app)
 ```
 
 ```js
-const { invoke } = window.__HEIMDALL__
-const r = await invoke("greeting.greet", { name: "Jake" })   // -> { message: "Hello, Jake" }
+// Untyped (always available): window.heimdall (alias of window.__HEIMDALL__)
+const r = await window.heimdall.invoke("greeting.greet", { name: "Jake" })
+
+// Typed client (generated from your Odin types; auto-kept-fresh by dev/build):
+import { greeting } from "./heimdall.gen.js"
+const { message } = await greeting.greet({ name: "Jake" })   // -> "Hello, Jake"
 // a command that returns an error rejects the promise
 ```
 
@@ -106,12 +123,34 @@ safe to emit from any thread.
 hd.emit(app, "file.progress", Progress{read = 512, total = 1000})
 ```
 ```js
-const off = window.__HEIMDALL__.on("file.progress", p => updateBar(p.read / p.total))
+import { on } from "./heimdall.gen.js"   // or window.heimdall.on(...)
+const off = on("file.progress", p => updateBar(p.read / p.total))
 // off()  // unsubscribe
 ```
 
-Want typed `invoke`/`on` in your editor? `heimdall generate-bindings` writes a
-`.d.ts` from your Odin types. Optional and additive.
+Want typed `invoke` in your editor? `heimdall generate-bindings` writes a typed
+client (`heimdall.gen.js` + `.d.ts`) from your Odin types — `dev`/`build`
+regenerate it automatically. Optional and additive; `window.heimdall.invoke` works
+without it.
+
+---
+
+## Window control
+
+One unified API across platforms — set initial state in `App_Config` (`min_width`,
+`maximized`, `fullscreen`, `always_on_top`, `center`, `hidden`), and drive the
+window at runtime from Odin or the frontend.
+
+```odin
+hd.window_minimize(app);  hd.window_set_fullscreen(app, true);  hd.window_set_title(app, "…")
+```
+```js
+import { win } from "./heimdall.gen.js"   // built-in `win` service
+await win.minimize();  await win.maximize();  await win.close()
+```
+
+See [docs/guide/window.md](docs/guide/window.md). (Some ops are best-effort under
+Wayland — e.g. `center`/`always_on_top`.)
 
 ---
 
@@ -119,9 +158,9 @@ Want typed `invoke`/`on` in your editor? `heimdall generate-bindings` writes a
 
 ```sh
 heimdall build                     # single binary, assets embedded -> ./myapp
-heimdall build --webview           # opt into webview/webview (native is default on macOS)
-heimdall bundle                    # macOS .app  (needs [bundle].identifier)
-heimdall bundle --sign --notarize  # Developer ID signing + Apple notarization
+heimdall build --webview           # opt into webview/webview (native is default on macOS & Linux)
+heimdall bundle                    # macOS .app, or Linux .deb + .rpm
+heimdall bundle --sign --notarize  # Developer ID signing + Apple notarization (macOS)
 ```
 
 Code signing is needed on macOS/Windows, never on Linux. `heimdall new` scaffolds
@@ -133,12 +172,12 @@ a GitHub Actions workflow for signed releases — see [`docs/ci.md`](docs/ci.md)
 
 | Command | What it does |
 | --- | --- |
-| `new <name>` | Scaffold a project (frontend + vendored framework + CI). |
+| `new <name>` | Scaffold a project (`--frontend vanilla\|sveltekit`, `--pm …`, `--add <sv-addon>`). |
 | `dev` | Run the dev server + app; reload on change. |
 | `build` | Frontend build → embed → compile a release binary. |
-| `bundle` | Assemble a macOS `.app` (`--sign`, `--adhoc`, `--notarize`). |
+| `bundle` | Package the app — macOS `.app` (`--sign`/`--notarize`) or Linux `.deb` + `.rpm`. |
 | `sign [target]` | Code-sign an app. |
-| `generate-bindings` | Emit a typed `.d.ts` for the frontend. |
+| `generate-bindings` | Emit a typed JS client (`.js`+`.d.ts`) from your command types. |
 | `doctor` | Check the toolchain and platform deps. |
 
 ---
@@ -171,11 +210,11 @@ signing/notarization credentials come from environment variables.
 
 ## Status
 
-Runs on **macOS** today, on either backend (cross-platform webview/webview by
-default `--webview`, or the native WKWebView shell that's the default on macOS).
-Linux/Windows native
-backends are scaffolded but not yet built. Full breakdown, repo layout, and how
-the tests work: **[docs/internals.md](docs/internals.md)**.
+Runs natively on **macOS** (WKWebView) and **Linux** (GTK4 + libadwaita + WebKitGTK) — each the
+default on its platform, with the cross-platform webview/webview backend a
+`--webview` opt-out. The **Windows** native backend (WebView2) is scaffolded but
+not yet built. Full breakdown, repo layout, and how the tests work:
+**[docs/internals.md](docs/internals.md)**.
 
 ## Docs
 

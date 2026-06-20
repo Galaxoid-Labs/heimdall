@@ -4,7 +4,7 @@
 
 ```sh
 heimdall build              # frontend build → embed assets → compile -> ./myapp
-heimdall build --webview    # opt into the webview/webview backend (native is default on macOS)
+heimdall build --webview    # opt into the webview/webview backend (native is default on macOS & Linux)
 ```
 
 The result is a single executable with your frontend embedded.
@@ -19,6 +19,46 @@ Requires `[bundle].identifier` in [`heimdall.toml`](./configuration.md). The
 bundle gets an `Info.plist`, the executable, a `PkgInfo`, and (if you set
 `[bundle].icon`) an `AppIcon.icns` — a `.png` is converted automatically via
 `sips` / `iconutil`.
+
+## Bundle for Linux (`.deb` + `.rpm`)
+
+On Linux, `heimdall bundle` emits **both** a Debian `.deb` and an RPM `.rpm`:
+
+```sh
+heimdall bundle             # -> ./myapp_1.0.0_amd64.deb  and  ./myapp-1.0.0-1.x86_64.rpm
+```
+
+Each package installs the executable to `/usr/bin`, a `.desktop` entry to
+`/usr/share/applications`, and (if `[bundle].icon` is a `.png`) an icon under
+`hicolor/256x256`. Tooling: `dpkg-deb` for the `.deb` (built with
+`--root-owner-group`, no `fakeroot` needed) and `rpmbuild` for the `.rpm`. If only
+one is installed, you get that package and a note about the other.
+
+**Dependencies.** The `.rpm`'s `Requires` are **auto-detected** from the binary's
+linked libraries (so the GTK4/WebKit runtime is pulled in automatically). The
+`.deb`'s `Depends` defaults to `libwebkitgtk-6.0-4, libadwaita-1-0, libgtk-4-1`
+— override with `[bundle.linux].deb_depends` if your target names them
+differently. (End users get the webview runtime via their package manager; see
+[platform notes](../platform_notes.md).)
+
+**Metadata** comes from `heimdall.toml` (all optional, with `[bundle.linux]`
+overrides):
+
+```toml
+[bundle]
+identifier  = "com.example.myapp"   # used as the .desktop / icon id
+version     = "1.0.0"
+summary     = "A short one-liner"
+description = "A longer description."
+maintainer  = "Your Name <you@example.com>"
+license     = "MIT"
+homepage    = "https://example.com"
+icon        = "icon.png"            # .png for Linux
+
+[bundle.linux]
+category    = "Utility;Development;" # freedesktop Categories for the .desktop
+# deb_depends = "libwebkitgtk-6.0-4, libadwaita-1-0, libgtk-4-1"
+```
 
 ## Code signing
 

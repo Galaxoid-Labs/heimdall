@@ -58,7 +58,7 @@ print_usage :: proc() {
 usage: heimdall <command> [args]
 
 commands:
-  new <name>           scaffold a new project (prompts for frontend)
+  new <name>           scaffold a project (--frontend vanilla|sveltekit, --pm bun|npm|pnpm|yarn|deno)
   dev                  start the frontend dev server + app; rebuild on change
   build                build frontend, embed assets, compile a release binary
   bundle               build + assemble a macOS .app (needs [bundle].identifier)

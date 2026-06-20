@@ -18,11 +18,11 @@ heimdall/
     backend.odin             # the Backend vtable + inbound-request flow
     backend_webview.odin     # webview/webview implementation of the vtable
     backend_darwin.odin      # native macOS WKWebView implementation (objc interop)
-    backend_linux.odin       # native WebKitGTK scaffold
+    backend_linux.odin       # native GTK4 + libadwaita + webkitgtk-6.0 backend
     backend_windows.odin     # native WebView2 scaffold
     events.odin              # emit() event bus
     threading.odin           # dispatch_main, terminate
-    shim.odin                # the injected __HEIMDALL__ JS client(s)
+    shim.odin                # the injected JS client (window.heimdall / __HEIMDALL__)
     schema.odin              # schema-dump mode (reflect -> JSON) for typed bindings
     assets.odin              # Asset type + MIME guessing
     server.odin              # loopback static server (prod assets, webview backend)
@@ -48,9 +48,16 @@ bridge, services, events, or user code changing.
   the default on macOS (`-define:HEIMDALL_WEBVIEW=true` opts out). Serves assets
   over a custom `app://`
   `WKURLSchemeHandler` (no loopback server) and enforces `should_quit`.
-- **`backend_linux.odin` / `backend_windows.odin`** — `#+build`-gated scaffolds
-  with implementation notes; not yet wired in. See
-  [`platform_notes.md`](platform_notes.md).
+- **`backend_linux.odin`** — a hand-written native Linux shell on **GTK4 +
+  libadwaita + webkitgtk-6.0** (GtkWindow + AdwHeaderBar + WebKitWebView + a
+  `WebKitUserContentManager` script-message handler), via plain GObject/C
+  `foreign import`. The default on Linux (`-define:HEIMDALL_WEBVIEW=true` opts
+  out). `adw_init` makes the title bar follow the system light/dark theme. Serves
+  assets over a custom `app://` scheme (no loopback server), enforces `should_quit`
+  via the window `close-request`, and renders the user's menus as a
+  `GtkPopoverMenuBar` (GMenu + actions).
+- **`backend_windows.odin`** — a `#+build`-gated scaffold with implementation
+  notes; not yet wired in. See [`platform_notes.md`](platform_notes.md).
 
 Two things flow back into the framework: `backend_on_request` (an inbound JS
 `invoke`) and the proc handed to `dispatch` (a UI-thread task). Backends translate
@@ -67,9 +74,10 @@ their native callbacks into those.
 | CLI: new/dev/build/bundle/sign/embed/generate-bindings/doctor | ✅ (`dev` watch loop lightly tested) |
 | Typed bindings (`generate-bindings`) | ✅ |
 | Native macOS WKWebView backend | ✅ |
-| Native menus (App/Edit/Window + custom, role + custom-event items) | ✅ macOS |
+| Native Linux backend (GTK4 + libadwaita + webkitgtk-6.0) | ✅ |
+| Native menus (custom + role + custom-event items; macOS adds App/Edit/Window) | ✅ macOS + Linux |
 | macOS `.app` bundling + code signing + notarization | ✅ (notarization needs a real Apple account to exercise) |
-| Native Linux (WebKitGTK) / Windows (WebView2) | ⏳ scaffolded |
+| Native Windows (WebView2) | ⏳ scaffolded |
 | Deep linking (`myapp://`), `.dmg`, Windows `signtool` | ⏳ future |
 
 ## How verification works
@@ -87,7 +95,7 @@ writes a JSON artifact to `/tmp` — so they're CI-checkable without a human cli
 Run one against a backend:
 
 ```sh
-odin run examples/_probe -collection:src=.                               # native (default on macOS)
+odin run examples/_probe -collection:src=.                               # native (default on macOS & Linux)
 odin run examples/_probe -collection:src=. -define:HEIMDALL_WEBVIEW=true  # webview backend
 ```
 

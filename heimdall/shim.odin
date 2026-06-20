@@ -41,6 +41,7 @@ SHIM_JS :: `
   }
 
   window.__HEIMDALL__ = { invoke: invoke, on: on, _event: _event };
+  window.heimdall = window.__HEIMDALL__; // short, friendly alias
 })();
 `
 
@@ -97,6 +98,7 @@ SHIM_JS_NATIVE :: `
   window.__HEIMDALL__ = {
     invoke: invoke, on: on, _event: _event, _resolve: _resolve, _reject: _reject,
   };
+  window.heimdall = window.__HEIMDALL__; // short, friendly alias
 })();
 `
 

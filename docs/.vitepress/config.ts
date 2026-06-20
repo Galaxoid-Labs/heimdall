@@ -39,6 +39,7 @@ export default defineConfig({
             { text: 'Getting Started', link: '/guide/getting-started' },
             { text: 'Commands (invoke)', link: '/guide/commands' },
             { text: 'Events (emit / on)', link: '/guide/events' },
+            { text: 'Window', link: '/guide/window' },
             { text: 'Menus', link: '/guide/menus' },
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Packaging & Signing', link: '/guide/packaging' },

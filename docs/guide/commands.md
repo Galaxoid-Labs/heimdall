@@ -54,15 +54,22 @@ main :: proc() {
 
 ## Call it from JS
 
-```js
-const { invoke } = window.__HEIMDALL__
+The bridge is exposed as `window.heimdall` (and `window.__HEIMDALL__`, kept for
+back-compat). Two ways to call a command:
 
-const result = await invoke("greeting.greet", { name: "Jake" })
-console.log(result.message)   // "Hello, Jake"
+```js
+// 1) Untyped — quick, no build step:
+const { message } = await window.heimdall.invoke("greeting.greet", { name: "Jake" })
+
+// 2) Typed client (recommended) — generated from your Odin types:
+import { greeting } from "./heimdall.gen.js"
+const { message } = await greeting.greet({ name: "Jake" })   // args + result are typed
 ```
 
 The command name is `"service.command"`. Arguments are an object matching your
-`Args` struct; the resolved value matches your `Result` struct.
+`Args` struct; the resolved value matches your `Result` struct. The typed client
+(see [Typed calls](#typed-calls)) just calls `window.heimdall.invoke` under the
+hood — same wire protocol, nicer DX.
 
 ## Errors
 
@@ -76,7 +83,7 @@ boom :: proc(s: ^Greeting, args: Boom_Args) -> (Boom_Result, hd.Error) {
 ```
 ```js
 try {
-    await invoke("greeting.boom", {})
+    await window.heimdall.invoke("greeting.boom", {})   // or greeting.boom() via the client
 } catch (e) {
     console.error("rejected:", e)
 }
@@ -91,5 +98,18 @@ just `hd.emit` (which is already thread-safe) to report results. See
 
 ## Typed calls
 
-`heimdall generate-bindings` writes a `web/bindings.d.ts` from your Odin command
-types, so `invoke` is fully typed in your editor. Optional and additive.
+`heimdall generate-bindings` reads your Odin command types and writes a typed
+**client module** — `heimdall.gen.js` + `heimdall.gen.d.ts` (default
+`web/src/heimdall.gen`, set by `bindings` in `heimdall.toml`). It exposes one
+object per service:
+
+```js
+import { greeting, on } from "./heimdall.gen.js"
+
+const { message } = await greeting.greet({ name: "Jake" })  // typed args + result
+const off = on("file.progress", p => updateBar(p))          // events too
+```
+
+`heimdall dev` and `heimdall build` regenerate it automatically (it's also created
+by `heimdall new`), so it stays in sync with your Odin code. It's optional and
+additive — the untyped `window.heimdall.invoke(...)` always works.

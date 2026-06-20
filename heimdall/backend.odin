@@ -34,6 +34,11 @@ Backend :: struct {
 
 	set_title: proc(app: ^App, title: string),
 	set_size:  proc(app: ^App, width, height: int, fixed: bool),
+
+	// Window control (minimize/maximize/fullscreen/show/hide/focus/center/close).
+	// One entry for the whole set; the per-platform switch lives in the backend.
+	// Ops a platform can't honor (e.g. center/always-on-top under Wayland) no-op.
+	window_op: proc(app: ^App, op: Window_Op),
 	navigate:  proc(app: ^App, url: string),
 	set_html:  proc(app: ^App, html: string),
 	init_js:   proc(app: ^App, js: string), // inject before page load (the shim)

@@ -21,7 +21,7 @@ writing a line. **The phased build plan, task checklists, and sequencing live in
 
 ## Status
 
-**The MVP is built and working on macOS.** Design informed by **Wails v3** (we
+**The MVP is built and working on macOS and Linux.** Design informed by **Wails v3** (we
 lifted its service model, event bus, binding-gen strategy, and lifecycle hooks).
 
 Done & verified (see `DECISIONS.md` for the full log, `docs/internals.md` for the
@@ -36,24 +36,29 @@ status table, headless self-tests under `examples/_probe*`):
   `generate-bindings`, `doctor`, `docs`.
 - Typed bindings — `generate-bindings` schema-dump → `.d.ts`.
 - **Backend vtable** (`backend.odin`) — the seam every backend implements.
-- **Native macOS WKWebView backend** (`backend_darwin.odin`, objc interop) — now
-  the **default** on macOS (`-define:HEIMDALL_WEBVIEW=true` opts out). Includes
+- **Native macOS WKWebView backend** (`backend_darwin.odin`, objc interop) — the
+  **default** on macOS (`-define:HEIMDALL_WEBVIEW=true` opts out). Includes
   native menus (`menu.odin` + App_Config.menu).
+- **Native Linux backend on GTK4 + libadwaita + webkitgtk-6.0**
+  (`backend_linux.odin`, GObject/C interop) — the **default** on Linux. AdwHeaderBar
+  title bar that follows the system light/dark theme (`adw_init`), custom `app://`
+  scheme, `GtkPopoverMenuBar` menus, `should_quit` via `close-request`. All
+  `_probe*` pass identically to macOS.
 - macOS `.app` bundling + code signing + notarization + a reusable CI action.
 - Docs site (VitePress, `docs/`) + branding.
 
-### ► PICK UP HERE — next: native **Linux** backend (WebKitGTK)
+### ► PICK UP HERE — next: native **Windows** backend (WebView2, COM)
 
-Implement `heimdall/backend_linux.odin` against the `Backend` vtable
-(`backend.odin`), using `backend_darwin.odin` as the reference implementation and
-the **Linux section of `docs/platform_notes.md`** for the WebKitGTK API mapping.
-Then wire it into `app.odin` selection
-(`when ODIN_OS == .Linux && !HEIMDALL_WEBVIEW`) and verify with the probes
-(`odin run examples/_probe -collection:src=.` writes `/tmp/heimdall_probe.json`;
-all five `_probe*` should pass like they do on macOS). The webview/webview
-backend already runs on Linux as the fallback, so nothing is blocked.
-
-Windows (WebView2, COM) is **deliberately last** — most tedious of the three.
+macOS and Linux native backends are done. Windows (WebView2 via COM) is the last
+and most tedious: hand-lay vtable structs, call through fn-ptrs, and **implement**
+the completion/event-handler interfaces (vtable + QueryInterface + refcount).
+Implement `heimdall/backend_windows.odin` against the `Backend` vtable
+(`backend.odin`), using `backend_darwin.odin`/`backend_linux.odin` as references
+and the **Windows section of `docs/platform_notes.md`** for the COM/WebView2 API
+mapping. Wire it into `app.odin` selection
+(`when ODIN_OS == .Windows && !HEIMDALL_WEBVIEW`) and verify with the probes
+(`odin build examples/_probe -collection:src=.`; all `_probe*` should pass like
+they do on macOS/Linux). The webview/webview backend is the fallback until then.
 
 ---
 
@@ -134,6 +139,12 @@ App_Config :: struct {
     dev_url:      string,  // e.g. "http://localhost:5173" — used only in dev builds
     icon:         []u8,    // embedded PNG
 
+    // Initial window state (optional; best-effort per platform — center/always_on_top
+    // are no-ops under Wayland). min_width/min_height, maximized, fullscreen,
+    // always_on_top, center, hidden.
+    min_width, min_height: int,
+    maximized, fullscreen, always_on_top, center, hidden: bool,
+
     // Lifecycle hooks (all optional; nil == skip)
     on_startup:   proc(app: ^App) -> Error, // after webview init, before frontend loads
     on_shutdown:  proc(app: ^App),          // on close; clean up here
@@ -143,6 +154,14 @@ App_Config :: struct {
 create  :: proc(cfg: App_Config) -> (^App, Error)
 run     :: proc(app: ^App)                  // blocks; runs the platform event loop
 destroy :: proc(app: ^App)
+
+// Unified window control — one API, platform switch under the backend vtable
+// (Backend.window_op). Also exposed to JS via the built-in reserved `win` service
+// (invoke("win.minimize") / generated `win.minimize()`).
+window_minimize/maximize/unmaximize/show/hide/focus/center/close :: proc(app: ^App)
+window_set_fullscreen :: proc(app: ^App, on: bool)
+window_set_title :: proc(app: ^App, title: string)
+window_set_size  :: proc(app: ^App, width, height: int)
 ```
 
 Internally, dispatch on `ODIN_OS` with `when`:
@@ -162,7 +181,7 @@ small internal vtable: `webview_create`, `webview_navigate`, `webview_eval`,
 
 | Platform | API        | Binding approach                                   | Difficulty |
 | -------- | ---------- | -------------------------------------------------- | ---------- |
-| Linux    | WebKitGTK  | `foreign import` against `libwebkit2gtk-4.1`; plain C / GObject | easy       |
+| Linux    | WebKitGTK  | `foreign import` against `webkitgtk-6.0` (GTK4) + `libadwaita-1`; plain C / GObject | easy       |
 | macOS    | WKWebView  | Odin Objective-C interop (`@(objc_class)`, `objc_send`) — same machinery as the Metal vendor bindings | medium     |
 | Windows  | WebView2   | COM: hand-lay vtable structs, call through fn-ptrs, **implement** the completion/event handler interfaces yourself (vtable + QueryInterface + refcount) | tedious    |
 
@@ -382,12 +401,12 @@ A single Odin binary. This is the user's primary touchpoint — make it pleasant
 
 | Command                         | What it does                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------- |
-| `heimdall new <name>`           | Scaffold a project from a template (prompts for frontend: vanilla / svelte / react). Wires the bridge, JS client, example command, `build` script. |
-| `heimdall dev`                  | Start the user's frontend dev server (configurable cmd, default `npm run dev`), build the Odin app with `HEIMDALL_DEV=true`, launch pointing at the dev URL. Rebuild + relaunch Odin on change. |
-| `heimdall build`                | Run the frontend build (`npm run build`), `embed` the output, compile Odin `-o:speed`, emit the final binary. `--release` also bundles (`.app` / AppImage / `.exe`). |
+| `heimdall new <name>`           | Scaffold a project (`--frontend vanilla\|sveltekit`, `--pm bun\|npm\|pnpm\|yarn\|deno`). Wires the bridge, JS client + typed bindings, example command, vendored framework, CI. |
+| `heimdall dev`                  | Start the frontend dev server (configurable cmd, default `bun run dev`), build the Odin app with `HEIMDALL_DEV=true`, launch pointing at the dev URL. Rebuild + relaunch Odin on change. |
+| `heimdall build`                | Run the frontend build (`npm run build`), `embed` the output, compile Odin `-o:speed`, emit the final binary. Package with `heimdall bundle`. |
 | `heimdall embed <dir> <out>`    | Standalone asset-embed step → generated `.odin`. Composable; `build` calls it. |
 | `heimdall generate-bindings`    | Run the app in schema-dump mode (`core:reflect` over the service registry) and emit `.d.ts` for typed `invoke`/`on`. Optional — untyped `invoke` works without it. |
-| `heimdall bundle`               | Platform packaging only (`.app`/`.dmg`-ish, AppImage, `.exe` + resources). Post-MVP. |
+| `heimdall bundle`               | Platform packaging: macOS `.app` (sign/notarize) and Linux `.deb` + `.rpm` (Windows `.exe` later). |
 | `heimdall doctor`               | Check toolchain: `odin` present, `node`/bundler present, platform webview deps (WebKitGTK headers, WebView2 runtime, Xcode CLT). Print actionable fixes. |
 
 `new` flow target: **clone template → `cd` → `npm install` → `heimdall dev` →
@@ -410,7 +429,7 @@ heimdall/
     threading.odin          # dispatch_main + helpers
     errors.odin             # Error union
     backend_darwin.odin     # WKWebView (objc interop)
-    backend_linux.odin      # WebKitGTK (foreign import)
+    backend_linux.odin      # GTK4 + libadwaita + webkitgtk-6.0 (foreign import)
     backend_windows.odin    # WebView2 (COM)  [last]
     menu/                   # optional native menus
     dialog/                 # optional native dialogs
@@ -445,7 +464,7 @@ myapp/
   heimdall/                 # vendored framework package (imported as ./heimdall subdir)
   web/                      # frontend (any stack); produces web/dist
     package.json
-    bindings.d.ts           # generated by `generate-bindings` (optional, gitignored)
+    src/heimdall.gen.{js,d.ts}  # typed client from `generate-bindings` (optional, gitignored)
     src/...
   heimdall.toml             # optional: title, size, icon, dev/build cmds
   build.sh                  # one-shot: npm build → heimdall embed → odin build
@@ -467,7 +486,7 @@ Keep `heimdall.toml` tiny — title, window size, icon path, `dev_cmd`,
 ## Build & toolchain
 
 ```
-odin build cli -out:heimdall -o:speed        # build the CLI
+odin build cli -out:heimdall-cli -o:speed    # build the CLI (root `heimdall/` is the framework pkg)
 odin run examples/hello                        # run an example directly
 odin test heimdall                             # library tests
 ```
@@ -482,7 +501,8 @@ odin build . -out:myapp -o:speed               # root package
 
 Platform link deps (document in `doctor`):
 
-- **Linux:** `webkit2gtk-4.1` (or 6.0/GTK4) dev package, GTK.
+- **Linux:** GTK4 + libadwaita + the GTK4 WebKit port — `webkitgtk-6.0`,
+  `libadwaita-1`, `gtk4` dev packages.
 - **macOS:** link `WebKit`, `Cocoa` frameworks; Xcode command-line tools.
 - **Windows:** WebView2 loader (`WebView2Loader.dll`) + runtime; the Evergreen
   runtime ships on current Windows but verify in `doctor`.
@@ -517,7 +537,8 @@ In scope, later:
 - Windows/WebView2 backend (after macOS+Linux).
 - Typed **event** payloads in the generated `.d.ts` (commands are covered in MVP;
   events get typed signatures in a second pass).
-- `bundle`: `.app`/AppImage/`.exe` packaging, icons, code-signing hooks.
+- `bundle`: Windows `.exe` packaging (macOS `.app` + Linux `.deb`/`.rpm` done);
+  AppImage; icons; more code-signing hooks.
 - Auto-updater, multi-window, plugin registry.
 
 (Services, the event bus, lifecycle hooks, and `generate-bindings` for commands

@@ -249,8 +249,8 @@ build reports zero leaks on the examples.
 
 **Goal:** `heimdall new → dev → build` works end to end.
 
-- [ ] `new <name>`: scaffold from embedded template (vendor `heimdall/` in,
-      prompt frontend: vanilla / svelte / react).
+- [x] `new <name>`: scaffold (vendor `heimdall/` in, `--frontend vanilla|sveltekit`,
+      `--pm bun|npm|pnpm|yarn|deno`).
 - [ ] `dev`: start frontend dev server, build app with `HEIMDALL_DEV=true`, launch
       at dev URL, rebuild+relaunch on change.
 - [ ] `build`: frontend build → `embed` → `odin build -o:speed` → binary.
@@ -267,7 +267,7 @@ build reports zero leaks on the examples.
 - [ ] Schema-dump mode (`-define:HEIMDALL_SCHEMA=true`): init services, walk the
       registry, introspect `Args`/`Result` typeids via `core:reflect`
       (`struct_field_names/types/tags`), emit a JSON schema, exit.
-- [ ] CLI turns the schema into `web/bindings.d.ts` (typed `invoke`). Optional,
+- [ ] CLI turns the schema into a typed client (`heimdall.gen.js` + `.d.ts`). Optional,
       additive — untyped `invoke` keeps working.
 
 **Done when:** `heimdall generate-bindings` produces `.d.ts` giving IDE
@@ -282,16 +282,18 @@ autocomplete for every command; deleting it doesn't break the build.
 - [x] Internal backend vtable (`backend.odin`) — the seam every backend implements.
 - [x] **macOS** WKWebView (objc interop) — `backend_darwin.odin`, the DEFAULT on
       macOS. Custom `app://` scheme handler, native menus, `should_quit`.
-- [ ] **Linux** WebKitGTK (`foreign import` C / GObject) — `backend_linux.odin`.
-      **← NEXT.** See the Linux section of `docs/platform_notes.md` and the START
-      HERE block in `backend_linux.odin`; mirror `backend_darwin.odin`.
-- [ ] **Windows** WebView2 (COM) — `backend_windows.odin`. Last (most tedious).
+- [x] **Linux** GTK4 + libadwaita + webkitgtk-6.0 (`foreign import` C / GObject) —
+      `backend_linux.odin`, the DEFAULT on Linux. AdwHeaderBar title bar that follows
+      the system light/dark theme, custom `app://` scheme, `GtkPopoverMenuBar` menus,
+      `should_quit` via `close-request`. All `_probe*` pass identically to macOS.
+- [ ] **Windows** WebView2 (COM) — `backend_windows.odin`. **← NEXT.** Last (most
+      tedious). See the Windows section of `docs/platform_notes.md`.
 - [ ] Tray (reuse `tray-odin`) + native dialogs.
 - [x] Bridge/services/events APIs unchanged across backends — proven on macOS
-      (all `_probe*` pass identically on webview + native).
+      and Linux (all `_probe*` pass identically on webview + native).
 
-**Done (macOS):** `examples/hello` runs against the native backend with menus +
-`app://` and identical user-facing code. Repeat the bar for Linux, then Windows.
+**Done (macOS + Linux):** `examples/hello` runs against the native backend with
+menus + `app://` and identical user-facing code. Repeat the bar for Windows.
 
 ---
 

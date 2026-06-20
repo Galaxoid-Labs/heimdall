@@ -92,6 +92,16 @@ darwin_backend_create :: proc(app: ^App, debug: bool) -> bool {
 	dwn.nsapp = msg(id, cls("NSApplication"), "sharedApplication")
 	msg(nil, oc(dwn.nsapp), "setActivationPolicy:", NS.Integer(0))
 
+	// App_Config.icon (PNG bytes) → the Dock icon at runtime, so a dev run looks
+	// finished without bundling. (Bundled apps get their icon from the .app.)
+	if len(app.cfg.icon) > 0 {
+		data := msg(id, cls("NSData"), "dataWithBytes:length:", raw_data(app.cfg.icon), NS.UInteger(len(app.cfg.icon)))
+		img := msg(id, oc(msg(id, cls("NSImage"), "alloc")), "initWithData:", data)
+		if img != nil {
+			msg(nil, oc(dwn.nsapp), "setApplicationIconImage:", img)
+		}
+	}
+
 	// NSWindow.
 	rect := CGRect{{0, 0}, {f64(dwn.width), f64(dwn.height)}}
 	style := NS.UInteger(1 | 2 | 4 | 8) // Titled|Closable|Miniaturizable|Resizable
@@ -134,10 +144,28 @@ darwin_backend_create :: proc(app: ^App, debug: bool) -> bool {
 	// Menu bar (App + Edit + the user's menus + Window).
 	darwin_install_menu(dwn)
 
+	// Initial window state from App_Config.
+	if app.cfg.min_width > 0 || app.cfg.min_height > 0 {
+		msg(nil, oc(win), "setContentMinSize:", CGSize{f64(app.cfg.min_width), f64(app.cfg.min_height)})
+	}
+	if app.cfg.always_on_top {
+		msg(nil, oc(win), "setLevel:", NS.Integer(3)) // NSFloatingWindowLevel
+	}
+	if app.cfg.center {
+		msg(nil, oc(win), "center")
+	}
+	if app.cfg.maximized {
+		msg(nil, oc(win), "zoom:", id(nil))
+	}
+	if app.cfg.fullscreen {
+		msg(nil, oc(win), "toggleFullScreen:", id(nil))
+	}
+
 	app.backend = Backend {
 		impl      = dwn,
 		set_title = dwn_set_title,
 		set_size  = dwn_set_size,
+		window_op = dwn_window_op,
 		navigate  = dwn_navigate,
 		set_html  = dwn_set_html,
 		init_js   = dwn_init_js,
@@ -615,11 +643,51 @@ dwn_dispatch_cb :: proc "c" (ctx: rawptr) {
 	free(box, box.app.event_allocator)
 }
 
+// Unified window control (NSWindow). Mirrors lin_window_op / wvb_window_op.
+@(private = "file")
+NS_FULLSCREEN_MASK :: NS.UInteger(1 << 14) // NSWindowStyleMaskFullScreen
+
+@(private = "file")
+dwn_window_op :: proc(app: ^App, op: Window_Op) {
+	dwn := self_dwn(app)
+	win := dwn.window
+	switch op {
+	case .Minimize:
+		msg(nil, oc(win), "miniaturize:", id(nil))
+	case .Maximize:
+		if !bool(msg(bool, oc(win), "isZoomed")) {msg(nil, oc(win), "zoom:", id(nil))}
+	case .Unmaximize:
+		if bool(msg(bool, oc(win), "isZoomed")) {msg(nil, oc(win), "zoom:", id(nil))}
+	case .Fullscreen_On:
+		if (msg(NS.UInteger, oc(win), "styleMask") & NS_FULLSCREEN_MASK) == 0 {
+			msg(nil, oc(win), "toggleFullScreen:", id(nil))
+		}
+	case .Fullscreen_Off:
+		if (msg(NS.UInteger, oc(win), "styleMask") & NS_FULLSCREEN_MASK) != 0 {
+			msg(nil, oc(win), "toggleFullScreen:", id(nil))
+		}
+	case .Show:
+		msg(nil, oc(win), "makeKeyAndOrderFront:", id(nil))
+		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+	case .Hide:
+		msg(nil, oc(win), "orderOut:", id(nil))
+	case .Focus:
+		msg(nil, oc(win), "makeKeyAndOrderFront:", id(nil))
+		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+	case .Center:
+		msg(nil, oc(win), "center")
+	case .Close:
+		dwn.running = false
+	}
+}
+
 @(private = "file")
 dwn_run :: proc(app: ^App) {
 	dwn := self_dwn(app)
-	msg(nil, oc(dwn.window), "makeKeyAndOrderFront:", id(nil))
-	msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+	if !app.cfg.hidden {
+		msg(nil, oc(dwn.window), "makeKeyAndOrderFront:", id(nil))
+		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+	}
 
 	// Hand-rolled event loop so terminate() can return cleanly (vs [NSApp run]).
 	mode := nsstring("kCFRunLoopDefaultMode")
