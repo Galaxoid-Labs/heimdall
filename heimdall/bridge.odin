@@ -4,7 +4,7 @@ import "core:encoding/json"
 
 // Backend-agnostic bridge helpers. The inbound-request flow itself lives in
 // `backend_on_request` (backend.odin); the per-backend native callback that
-// feeds it lives in each backend file (e.g. backend_webview.odin). These two
+// feeds it lives in each backend file (e.g. backend_darwin.odin). These two
 // helpers — parsing the request envelope and encoding a rejection — are pure and
 // shared by all backends.
 

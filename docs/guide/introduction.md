@@ -30,10 +30,9 @@ const { message } = await greeting.greet({ name: "Jake" })
   pushes events to JS (`emit`/`on`). Both are plain JSON. That's the whole API.
 - **Fast inner loop.** `heimdall dev` rebuilds and relaunches quickly — the main
   reason this is written in Odin.
-- **Native when you want it.** A hand-written native backend is the default —
-  WKWebView on macOS, WebKitGTK on Linux (custom `app://` scheme, native menus,
-  enforced `should_quit`). Opt into the tiny cross-platform
-  [webview/webview](https://github.com/webview/webview) library with `--webview`.
+- **Native shell.** A hand-written native backend per platform — WKWebView on
+  macOS, WebKitGTK on Linux, WebView2 on Windows — with a custom `app://` scheme,
+  native menus, and enforced `should_quit`.
 
 ## How it works
 

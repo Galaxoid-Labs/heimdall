@@ -1,55 +1,18 @@
 package heimdall
 
-// The JS client injected (via webview_init) before any page loads. Exposes
-// `window.__HEIMDALL__` with:
+// The JS client injected at document-start before any page loads. Exposes
+// `window.__HEIMDALL__` (alias `window.heimdall`) with:
 //   invoke(name, args) -> Promise   request/response to an Odin command
 //   on(name, handler)  -> off()     subscribe to events emitted from Odin
 //   _event(name, payload)           internal: called by Odin (eval) to fan out
+//   _resolve/_reject(id, ...)       internal: settle a pending invoke
 //
-// Kept as a single string const so there's one source of truth for the wire
+// The native message channels (WKScriptMessage / WebKitGTK / WebView2) are one-way
+// postMessage, so `invoke` generates a correlation id, stashes the pending
+// promise, and the Odin side eval-calls _resolve/_reject. `__CHANNEL__` is
+// substituted per platform with the message-handler post expression at backend
+// init. Kept as a single string const so there's one source of truth for the wire
 // protocol. No template literals (the Odin literal is backtick-delimited).
-SHIM_JS :: `
-(function () {
-  if (window.__HEIMDALL__) return;
-
-  var listeners = new Map(); // name -> Set<handler>
-
-  function invoke(name, args) {
-    // window.__heimdall_invoke is the native binding registered from Odin.
-    // It returns a Promise that resolves with the command's result or rejects
-    // with the error string.
-    return window.__heimdall_invoke(name, args === undefined ? {} : args);
-  }
-
-  function on(name, handler) {
-    var set = listeners.get(name);
-    if (!set) { set = new Set(); listeners.set(name, set); }
-    set.add(handler);
-    return function off() {
-      var s = listeners.get(name);
-      if (s) { s.delete(handler); if (s.size === 0) listeners.delete(name); }
-    };
-  }
-
-  // Called by Odin via eval: __HEIMDALL__._event("name", <payload literal>).
-  function _event(name, payload) {
-    var set = listeners.get(name);
-    if (!set) return;
-    set.forEach(function (h) {
-      try { h(payload); } catch (e) { console.error("[heimdall] event handler error:", e); }
-    });
-  }
-
-  window.__HEIMDALL__ = { invoke: invoke, on: on, _event: _event };
-  window.heimdall = window.__HEIMDALL__; // short, friendly alias
-})();
-`
-
-// The shim for the NATIVE backends (WKWebView/WebKitGTK/WebView2). Unlike
-// webview/webview's `webview_bind` (which returns a Promise directly), the native
-// message channels are one-way postMessage, so invoke generates a correlation id
-// and the Odin side eval-calls _resolve/_reject. `__CHANNEL__` is substituted per
-// platform with the message-handler post expression at backend init.
 SHIM_JS_NATIVE :: `
 (function () {
   if (window.__HEIMDALL__) return;

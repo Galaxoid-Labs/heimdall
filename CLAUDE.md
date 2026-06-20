@@ -21,44 +21,65 @@ writing a line. **The phased build plan, task checklists, and sequencing live in
 
 ## Status
 
-**The MVP is built and working on macOS and Linux.** Design informed by **Wails v3** (we
-lifted its service model, event bus, binding-gen strategy, and lifecycle hooks).
+**The MVP is built and working on macOS, Linux, and Windows.** Design informed by
+**Wails v3** (we lifted its service model, event bus, binding-gen strategy, and
+lifecycle hooks).
 
 Done & verified (see `DECISIONS.md` for the full log, `docs/internals.md` for the
 status table, headless self-tests under `examples/_probe*`):
 
 - IPC bridge — services + `invoke` (JSON, compile-time-generated marshalling).
 - Event bus — `emit` (Odin) / `on` (JS), thread-safe.
-- Asset embed + serving — loopback server (webview backend) **and** a real
-  `app://` `WKURLSchemeHandler` (native backend).
+- Asset embed + serving — a real `app://` custom scheme on every backend
+  (`WKURLSchemeHandler` / WebKitGTK URI scheme / WebView2 `WebResourceRequested`);
+  the loopback `Asset_Server` remains as an unused fallback seam.
 - Lifecycle hooks — `on_startup`, `on_shutdown`, `should_quit` (enforced natively).
 - `heimdall` CLI — `new`, `dev`, `build`, `bundle`, `sign`, `embed`,
   `generate-bindings`, `doctor`, `docs`.
 - Typed bindings — `generate-bindings` schema-dump → `.d.ts`.
 - **Backend vtable** (`backend.odin`) — the seam every backend implements.
 - **Native macOS WKWebView backend** (`backend_darwin.odin`, objc interop) — the
-  **default** on macOS (`-define:HEIMDALL_WEBVIEW=true` opts out). Includes
+  macOS backend. Includes
   native menus (`menu.odin` + App_Config.menu).
 - **Native Linux backend on GTK4 + libadwaita + webkitgtk-6.0**
   (`backend_linux.odin`, GObject/C interop) — the **default** on Linux. AdwHeaderBar
   title bar that follows the system light/dark theme (`adw_init`), custom `app://`
   scheme, `GtkPopoverMenuBar` menus, `should_quit` via `close-request`. All
   `_probe*` pass identically to macOS.
-- macOS `.app` bundling + code signing + notarization + a reusable CI action.
+- **Native Windows backend on WebView2 / COM** (`backend_windows.odin`, hand-laid
+  COM vtables) — the **default** on Windows. Custom `app://` scheme (via an
+  implemented `ICoreWebView2EnvironmentOptions4`), `HMENU` menus + accelerators,
+  `should_quit` via `WM_CLOSE`, and the modern Win11 title bar
+  (`DwmSetWindowAttribute` — rounded corners + immersive dark mode following the
+  system theme). The loader is vendored static (`heimdall/webview2/`, no DLL to
+  ship). All `_probe*` pass identically to macOS/Linux.
+- macOS `.app` bundling + code signing + notarization + a reusable CI action;
+  Windows **Inno Setup installer** (`.exe`) + portable `.zip` + `signtool` signing
+  (icon/version embedded via `rc.exe`, `-subsystem:windows`); Linux `.deb`/`.rpm`.
 - Docs site (VitePress, `docs/`) + branding.
 
-### ► PICK UP HERE — next: native **Windows** backend (WebView2, COM)
+### ► PICK UP HERE — next
 
-macOS and Linux native backends are done. Windows (WebView2 via COM) is the last
-and most tedious: hand-lay vtable structs, call through fn-ptrs, and **implement**
-the completion/event-handler interfaces (vtable + QueryInterface + refcount).
-Implement `heimdall/backend_windows.odin` against the `Backend` vtable
-(`backend.odin`), using `backend_darwin.odin`/`backend_linux.odin` as references
-and the **Windows section of `docs/platform_notes.md`** for the COM/WebView2 API
-mapping. Wire it into `app.odin` selection
-(`when ODIN_OS == .Windows && !HEIMDALL_WEBVIEW`) and verify with the probes
-(`odin build examples/_probe -collection:src=.`; all `_probe*` should pass like
-they do on macOS/Linux). The webview/webview backend is the fallback until then.
+All three native backends are done (macOS/Linux/Windows) and are the *only*
+backends — the vendored `webview/webview` bootstrap, the `HEIMDALL_WEBVIEW` define,
+and the `--webview` flag have been removed (capstone complete). The framework is
+pure Odin + each platform's system webview. Candidate next steps, none blocking:
+
+- **macOS backend parity pass** (Linux/Windows are the most complete; bring macOS
+  up to match):
+  - `dwn_set_size` (`backend_darwin.odin`) **ignores `fixed`** — the macOS window is
+    always resizable regardless of `App_Config.resizable`. Linux
+    (`gtk_window_set_resizable`) and Windows (`WS_THICKFRAME`/`WS_MAXIMIZEBOX`)
+    honor it.
+  - **Verify menu accelerators fire when the web content has focus.** Windows needed
+    an explicit `AcceleratorKeyPressed` → `TranslateAcceleratorW` forward; macOS
+    *should* get this free via the responder chain / `performKeyEquivalent:`, but
+    confirm a `Cmd+…` shortcut works after clicking into the page.
+  - Initial web-content keyboard focus on show (Windows uses `MoveFocus`, Linux
+    `grab_focus`) — check the WKWebView gets first-responder on launch.
+- Tray (reuse `tray-odin`) + native dialogs across all three backends.
+- Typed **event** payloads in the generated `.d.ts` (commands already covered).
+- Deep linking (`myapp://`), `.dmg`, AppImage.
 
 ---
 
@@ -137,7 +158,7 @@ App_Config :: struct {
     width, height:int,
     resizable:    bool,
     dev_url:      string,  // e.g. "http://localhost:5173" — used only in dev builds
-    icon:         []u8,    // embedded PNG
+    icon:         []u8,    // embedded PNG — macOS Dock + Windows title-bar/taskbar icon
 
     // Initial window state (optional; best-effort per platform — center/always_on_top
     // are no-ops under Wayland). min_width/min_height, maximized, fullscreen,
@@ -196,16 +217,13 @@ Odin→JS is always "evaluate this JS string in the page": `evaluateJavaScript:`
 `webkit_web_view_evaluate_javascript` / `ExecuteScript`. The bridge uses that to
 resolve the JS-side promise (see below).
 
-> **Bootstrap decision (see DEVELOPMENT.md).** We start on the tiny
-> `webview/webview` C library rather than three hand-written native backends,
-> because its `webview_bind`/`webview_return` already gives us the request/response
-> path, `webview_init` injects our shim, `webview_eval` pushes events, and
-> `webview_dispatch` is `dispatch_main`. We keep the internal backend vtable so
-> native backends (for menus, tray, and a real `app://` scheme) can slot in later
-> without changing the bridge or user code. The one early gap: webview/webview has
-> no custom-scheme handler, so prod assets are served over a loopback HTTP server
-> instead of `app://` until the native phase. Bifrost's backend may be vendorable
-> when we get there.
+> **Backends (history).** The project bootstrapped on the tiny `webview/webview` C
+> library to get the request/response path, shim injection, and `dispatch_main`
+> quickly, behind the internal `Backend` vtable. All three platforms now have
+> hand-written native backends (WKWebView / WebKitGTK / WebView2), each with menus,
+> a real `app://` scheme, and `should_quit` — so the `webview/webview` bootstrap
+> has been removed entirely. The vtable seam remains; the native backend is the
+> only implementation per platform.
 
 ### IPC bridge — services & commands
 
@@ -406,7 +424,7 @@ A single Odin binary. This is the user's primary touchpoint — make it pleasant
 | `heimdall build`                | Run the frontend build (`npm run build`), `embed` the output, compile Odin `-o:speed`, emit the final binary. Package with `heimdall bundle`. |
 | `heimdall embed <dir> <out>`    | Standalone asset-embed step → generated `.odin`. Composable; `build` calls it. |
 | `heimdall generate-bindings`    | Run the app in schema-dump mode (`core:reflect` over the service registry) and emit `.d.ts` for typed `invoke`/`on`. Optional — untyped `invoke` works without it. |
-| `heimdall bundle`               | Platform packaging: macOS `.app` (sign/notarize) and Linux `.deb` + `.rpm` (Windows `.exe` later). |
+| `heimdall bundle`               | Platform packaging: macOS `.app` (sign/notarize), Linux `.deb` + `.rpm`, and Windows Inno Setup installer `.exe` + portable `.zip` (signtool). |
 | `heimdall doctor`               | Check toolchain: `odin` present, `node`/bundler present, platform webview deps (WebKitGTK headers, WebView2 runtime, Xcode CLT). Print actionable fixes. |
 
 `new` flow target: **clone template → `cd` → `npm install` → `heimdall dev` →
@@ -574,4 +592,5 @@ Still open:
 7. **Typed events:** ship typed event payloads in `.d.ts` for v1, or commands-only
    first and events in a second pass?
 
-(Backend bootstrap is now decided — start on `webview/webview`, see DEVELOPMENT.md.)
+(Backends: all three platforms are native-only — the `webview/webview` bootstrap
+has been removed. See DEVELOPMENT.md for the history.)

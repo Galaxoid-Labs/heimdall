@@ -1,11 +1,9 @@
 #+build darwin
 package heimdall
 
-// Native macOS backend — WKWebView via Objective-C interop. Implements the same
-// Backend vtable as backend_webview.odin, so the bridge / services / events /
-// user code are unchanged. Opt in with -define:HEIMDALL_NATIVE=true; otherwise
-// the webview/webview backend is used. (WebKit/Cocoa are linked via the `webview`
-// package, which the framework always imports.)
+// Native macOS backend — WKWebView via Objective-C interop. Fills the Backend
+// vtable (backend.odin); the bridge / services / events / user code are
+// platform-agnostic. This is the macOS backend (WebKit/Cocoa linked below).
 //
 // objc calls go through `intrinsics.objc_send` (the blessed builtin). It requires
 // a receiver typed as an @(objc_class) struct, so every runtime `id` is wrapped
@@ -38,10 +36,9 @@ cls :: #force_inline proc "contextless" (name: cstring) -> ^OC {
 	return transmute(^OC)NS.objc_lookUpClass(name)
 }
 
-// Link the frameworks this backend needs directly. @(require) forces the link
-// even though we reference no C symbols from them (objc classes are resolved at
-// runtime). The webview/webview package also links these, but when HEIMDALL_NATIVE
-// is set its backend is dead-stripped, so we can't rely on it pulling WebKit in.
+// Link the frameworks this backend needs. @(require) forces the link even though
+// we reference no C symbols from them directly (objc classes are resolved at
+// runtime), so without it the linker would dead-strip the frameworks.
 @(require) foreign import _webkit "system:WebKit.framework"
 @(require) foreign import _cocoa "system:Cocoa.framework"
 
@@ -322,8 +319,8 @@ darwin_has_ext :: proc(path: string) -> bool {
 }
 
 // NSWindowDelegate -windowShouldClose:. Honors should_quit (return false to
-// veto), otherwise ends the run loop so the app exits. This is the native
-// window-close hook the webview/webview backend can't provide.
+// veto), otherwise ends the run loop so the app exits — the native window-close
+// hook for should_quit.
 @(private = "file")
 window_should_close :: proc "c" (self: id, cmd: NS.SEL, sender: id) -> bool {
 	dwn := g_dwn

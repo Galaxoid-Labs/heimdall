@@ -3,12 +3,16 @@
 ## Prerequisites
 
 - [Odin](https://odin-lang.org/docs/install/)
-- [Bun](https://bun.sh)
+- A JS runtime for the frontend — [Node.js](https://nodejs.org) or [Bun](https://bun.sh)
+  (pick yours with `heimdall new --pm`; the default starter needs no dependencies).
 - **Platform webview deps** (the native backend links the system webview):
   - **macOS** — Xcode command-line tools (WebKit/Cocoa).
   - **Linux** — GTK4 + libadwaita + the GTK4 WebKit port:
     - Fedora: `sudo dnf install webkitgtk6.0-devel libadwaita-devel gtk4-devel`
     - Debian/Ubuntu: `sudo apt install libwebkitgtk-6.0-dev libadwaita-1-dev libgtk-4-dev`
+  - **Windows** — the WebView2 runtime (ships with Win10/11). To produce an
+    installer with `heimdall bundle`, [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+    (`winget install JRSoftware.InnoSetup6`); optional.
 
 Run `heimdall doctor` anytime to check your toolchain and platform dependencies,
 or `heimdall docs` to open this documentation locally in your browser.
@@ -92,7 +96,7 @@ any bundler (Vite, esbuild, …) by changing those.
 
 ```sh
 heimdall build                     # single binary with assets embedded
-heimdall bundle                    # macOS .app, or Linux .deb + .rpm
+heimdall bundle                    # macOS .app, Linux .deb + .rpm, or Windows installer .exe
 heimdall bundle --sign --notarize  # signed, notarized .app for distribution (macOS)
 ```
 

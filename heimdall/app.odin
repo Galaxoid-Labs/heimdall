@@ -27,7 +27,7 @@ App_Config :: struct {
 	width, height: int,
 	resizable:     bool,
 	dev_url:       string,             // dev builds point the webview here (bundler HMR)
-	icon:          []u8,               // embedded PNG — macOS Dock icon at runtime (Windows later); Linux/GTK4 has no per-window raw-bytes icon, so installed apps get it from the bundle's .desktop instead
+	icon:          []u8,               // embedded PNG — macOS Dock icon + Windows title-bar/taskbar icon at runtime; Linux/GTK4 has no per-window raw-bytes icon, so installed apps get it from the bundle's .desktop instead
 	assets:        map[string]Asset,   // prod builds serve these (from `embed`)
 	menu:          []Menu_Item,        // custom menu bar (native backend; see menu.odin)
 
@@ -45,9 +45,8 @@ App_Config :: struct {
 	// Lifecycle hooks. All optional (nil == skip).
 	on_startup:    proc(app: ^App) -> Error, // after shell init, before frontend loads; Error aborts run
 	on_shutdown:   proc(app: ^App),          // after the event loop exits; clean up here
-	should_quit:   proc(app: ^App) -> bool,  // return false to veto a close — enforced on the
-	                                         // native backend (NSWindowDelegate); the
-	                                         // webview/webview backend can't intercept close
+	should_quit:   proc(app: ^App) -> bool,  // return false to veto a close — enforced via each
+	                                         // backend's native window-close hook
 }
 
 // Create the app and its native shell. Registers the JS shim and the single
@@ -82,18 +81,18 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 		debug = true
 	}
 
-	// Select the backend. On macOS (WKWebView) and Linux (WebKitGTK) the native
-	// backend is the default; -define:HEIMDALL_WEBVIEW=true forces the
-	// cross-platform webview/webview backend instead. Windows uses webview/webview
-	// until its native backend lands. All implement the same vtable, so nothing
-	// else changes.
+	// Select the native backend for the host OS: WKWebView (macOS), WebKitGTK
+	// (Linux), or WebView2 (Windows). All implement the same Backend vtable, so the
+	// bridge / services / events / user code are identical across platforms.
 	ok: bool
-	when ODIN_OS == .Darwin && !HEIMDALL_WEBVIEW {
+	when ODIN_OS == .Darwin {
 		ok = darwin_backend_create(app, debug)
-	} else when ODIN_OS == .Linux && !HEIMDALL_WEBVIEW {
+	} else when ODIN_OS == .Linux {
 		ok = linux_backend_create(app, debug)
+	} else when ODIN_OS == .Windows {
+		ok = windows_backend_create(app, debug)
 	} else {
-		ok = webview_backend_create(app, debug)
+		#panic("heimdall: no native backend for this platform")
 	}
 	if !ok {
 		free(app)

@@ -13,8 +13,8 @@ package heimdall
 // you only describe your own menus (File, View, Help, …). A `separator` item
 // draws a divider.
 //
-// Native menus are a native-backend feature (macOS today). The webview/webview
-// bootstrap backend has no menu support and ignores this.
+// Native menus are supported on all backends (macOS NSMenu, Linux
+// GtkPopoverMenuBar, Windows HMENU).
 //
 //   app, _ := hd.create(hd.App_Config{
 //       title = "My App",

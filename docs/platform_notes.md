@@ -1,9 +1,9 @@
 # Platform notes
 
-Per-platform interop gotchas for the native backends. Until those land, the
-framework runs on the **webview/webview** C library (`heimdall/backend_webview.odin`),
-which hides all three platforms behind one C API. These notes are for the people
-implementing `backend_darwin.odin` / `backend_linux.odin` / `backend_windows.odin`.
+Per-platform interop gotchas for the native backends. The framework uses one
+hand-written native backend per platform — `backend_darwin.odin` (macOS),
+`backend_linux.odin` (Linux), and `backend_windows.odin` (Windows) — and this file
+documents the interop each one relies on.
 
 ## The backend vtable
 
@@ -24,23 +24,19 @@ when JS invokes a command, and the proc handed to `dispatch` when it runs.
 
 ### Request id correlation
 
-webview/webview's `webview_bind` gives each call a C `id` string we pass straight
-back to `webview_return` — so `Request_Id` is that cstring. The native message
-channels (`WKScriptMessage`, WebKitGTK script messages, `WebMessageReceived`)
-have **no** built-in id. So the native shim must:
+The native message channels (`WKScriptMessage`, WebKitGTK script messages,
+`WebMessageReceived`) have **no** built-in request id. So the shim must:
 
 1. generate an id, stash `{resolve, reject}` in a pending map,
 2. `postMessage({ id, name, args })`,
 3. have Odin `eval` back `__HEIMDALL__._resolve(id, result)` / `_reject(id, err)`.
 
-That is a **different shim** than the webview/webview one (which relies on
-`webview_bind` returning a Promise directly). Gate the shim string per backend.
+This is the id-correlated `SHIM_JS_NATIVE` injected at document-start by every
+backend.
 
 ## macOS — WKWebView (Objective-C interop) — IMPLEMENTED
 
-`backend_darwin.odin`. The default on macOS (`-define:HEIMDALL_WEBVIEW=true`
-forces the webview/webview backend instead). Notes from
-the implementation:
+`backend_darwin.odin`. The macOS backend. Notes from the implementation:
 
 - objc calls go through `intrinsics.objc_send`, which requires an `@(objc_class)`
   receiver type — so every runtime `id` is cast to `^OC` (a minimal NSObject
@@ -76,9 +72,8 @@ the implementation:
 ## Linux — GTK4 + libadwaita + WebKitGTK (`foreign import` C / GObject) — IMPLEMENTED
 
 `backend_linux.odin`, built against **GTK 4 + libadwaita + `webkitgtk-6.0`**. The
-default on Linux (`-define:HEIMDALL_WEBVIEW=true` forces the webview/webview
-backend instead). It implements the same `Backend` vtable as the macOS backend,
-with no Objective-C/COM machinery — just GObject functions and signals.
+Linux backend. It implements the same `Backend` vtable as the macOS backend, with
+no Objective-C/COM machinery — just GObject functions and signals.
 
 **Why GTK4/libadwaita (not GTK3/webkit2gtk-4.1):** `adw_init()` makes the whole UI
 follow the system light/dark preference automatically (AdwStyleManager), so the
@@ -128,37 +123,93 @@ follow the system light/dark preference automatically (AdwStyleManager), so the
   `app://` origin, threaded events, `should_quit`, zero leaks, and the menu
   `activate → emit("menu") → on("menu")` round-trip.
 
-## Windows — WebView2 (COM) — deliberately last
+## Windows — WebView2 (COM) — IMPLEMENTED
 
-**The full implementation plan lives in `heimdall/backend_windows.odin`** (a phased
-"START HERE" block). Summary of the API mapping:
+`backend_windows.odin`, built against the **WebView2** SDK. The Windows backend. It
+implements the same `Backend` vtable as macOS/Linux. All `_probe*` pass identically
+to the other platforms (bridge, threaded events, `app://` origin, lifecycle, zero
+leaks, window control, and the menu `accelerator → emit("menu") → on("menu")`
+round-trip).
 
-- COM with no language support: hand-lay the vtable structs, call through
-  function pointers, and **implement** the completion/event-handler interfaces
-  yourself (vtable of `proc "stdcall"` + `QueryInterface` + `AddRef`/`Release`).
-  `core:sys/windows` has the Win32 + COM basics; hand-declare only the WebView2
-  interfaces (use `WebView2.h` for vtable layout + IIDs).
-- Window + loop: `RegisterClassExW` / `CreateWindowExW` + a `WndProc` + a
-  `GetMessageW` loop (`Backend.run`); `WM_SIZE` resizes the controller.
-- Bootstrap (async, hand-written handlers): `CreateCoreWebView2EnvironmentWithOptions`
-  → `CreateCoreWebView2Controller(hwnd)` → `get_CoreWebView2`.
-- Message channel: `add_WebMessageReceived` ← `window.chrome.webview.postMessage`.
-- Inject the shim: `AddScriptToExecuteOnDocumentCreated` (`SHIM_JS_NATIVE`,
-  `__CHANNEL__` = `window.chrome.webview.postMessage(payload)`).
-- Eval / reply / events: `ExecuteScript`.
-- Main-thread hop (`Backend.dispatch`): `PostMessageW` a boxed task to the UI window.
-- `app://` scheme: register it at env creation via
-  `ICoreWebView2EnvironmentOptions4::SetCustomSchemeRegistrations`, then
-  `AddWebResourceRequestedFilter("app://*")` + `add_WebResourceRequested` →
-  `CreateWebResourceResponse` over an `IStream` of the embedded bytes + MIME.
-- Window control (`window_op`) + `App_Config` state: `ShowWindow`,
-  `WM_GETMINMAXINFO` (min size), `SetWindowPos` (center / topmost / fullscreen).
-- Menus: `HMENU` (`CreateMenu`/`AppendMenuW`) + `WM_COMMAND` → emit `"menu"`;
-  accelerators via `CreateAcceleratorTable` + `TranslateAcceleratorW`.
-- `should_quit`: `WM_CLOSE` returns 0 to veto, else `DestroyWindow` → `PostQuitMessage`.
-- Link: `WebView2LoaderStatic.lib` (static; no DLL to ship) + the Evergreen
-  runtime on the user's machine (verify in `doctor`).
-- Packaging: a `cmd_bundle_windows.odin` for the `.exe` (+ zip/MSI later) and the
-  `signtool` hook (`cmd_sign.odin` reserves the Windows path).
-
-Each phase ends at a passing probe (`examples/_probe*`), exactly like macOS/Linux.
+- **COM by hand** (no language support): every consumed WebView2 interface is a
+  struct whose first field is a `^Vtbl`; the vtable lists methods in order, with
+  the slots we never call typed `rawptr` so the offsets of the ones we do call stay
+  exact (slot orders + IIDs taken from `WebView2.h`). The interfaces we *implement*
+  (the env/controller completion handlers, `WebMessageReceived`,
+  `WebResourceRequested`, `AddScript…` completion, and `ICoreWebView2EnvironmentOptions`
+  /`…Options4`/`…CustomSchemeRegistration`) share a `Com_Base` layout (vtable ptr +
+  IID) with a generic `QueryInterface` and no-op refcount (they're singletons in
+  the backend struct, freed at `destroy`).
+- **Window + loop:** `RegisterClassExW` / `CreateWindowExW` + a `WndProc` + a
+  `GetMessageW`/`TranslateMessage`/`DispatchMessageW` loop (`Backend.run`); `WM_SIZE`
+  keeps the controller bounds in sync.
+- **Bootstrap is async:** `CreateCoreWebView2EnvironmentWithOptions` (STA, after
+  `CoInitializeEx`) → (handler) `CreateCoreWebView2Controller(hwnd)` → (handler)
+  `get_CoreWebView2`. The completion handlers fire on the message loop, so the shim,
+  message channel, `app://` filter, and the **initial navigation are deferred** until
+  the controller is ready (`navigate`/`set_html` before then are queued).
+  - **Gotcha:** `ICoreWebView2EnvironmentOptions::get_TargetCompatibleBrowserVersion`
+    must return a real version string (`CORE_WEBVIEW_TARGET_PRODUCT_VERSION`, e.g.
+    `"144.0.3719.77"`), not empty — an empty value makes env creation fail with
+    `E_INVALIDARG`. Bump `WEBVIEW2_TARGET_VERSION` when the vendored loader updates.
+- **Message channel:** `add_WebMessageReceived` ← `window.chrome.webview.postMessage`;
+  `TryGetWebMessageAsString` (the shim posts a JSON string). Shim injected via
+  `AddScriptToExecuteOnDocumentCreated` (`SHIM_JS_NATIVE`, `__CHANNEL__` =
+  `WINDOWS_CHANNEL`).
+- **Eval / reply / events:** `ExecuteScript`. Strings cross the boundary as UTF-16
+  (`win.utf8_to_wstring` / `win.wstring_to_utf8`).
+- **Main-thread hop (`Backend.dispatch`):** `PostMessageW(WM_APP_DISPATCH)` a boxed
+  task to the UI window; `WndProc` unboxes and runs it. Thread-safe, so `emit()` /
+  `terminate()` route through it.
+- **`app://` scheme:** registered at env creation via our implemented
+  `ICoreWebView2EnvironmentOptions4::GetCustomSchemeRegistrations` (one
+  `CustomSchemeRegistration` for `"app"`, `TreatAsSecure`), then
+  `AddWebResourceRequestedFilter("app://*", ALL)` + `add_WebResourceRequested` →
+  look up the path in the embedded asset map → `SHCreateMemStream` over the bytes →
+  `CreateWebResourceResponse(stream, 200, "OK", "Content-Type: …")` (or 404). `run`
+  navigates prod → `app://localhost/` (gated by `serves_assets`).
+- **Window control (`window_op`) + `App_Config` state:** `ShowWindow`,
+  `WM_GETMINMAXINFO` (min size), `SetWindowPos` (center / topmost), and
+  borderless-fullscreen by saving/restoring the style + rect over the monitor rect.
+- **Menus:** `HMENU` (`CreateMenu`/`CreatePopupMenu`/`AppendMenuW`) → `WM_COMMAND` →
+  emit `"menu"` (custom) or run the role (Quit → close; edit roles via
+  `document.execCommand`; Minimize); accelerators via `CreateAcceleratorTableW` +
+  `TranslateAcceleratorW` in the loop. Like Linux, only the user's menus are rendered.
+- **Accelerators with web focus:** `TranslateAcceleratorW` in the message loop only
+  fires while the *top-level* window has focus — once the user clicks into the page,
+  the WebView2 child eats the keys. So we also implement `add_AcceleratorKeyPressed`
+  on the controller: it fires before the page sees the key, and we run it through the
+  same `TranslateAcceleratorW(hwnd, accel, …)` and set `Handled` if it matched. This
+  makes host menu shortcuts work regardless of focus (GTK gets this free from its
+  shortcut controller; macOS from the responder chain).
+- **DevTools / focus:** DevTools (F12 / right-click *Inspect*) are gated to dev
+  builds via `ICoreWebView2Settings::put_AreDevToolsEnabled(debug)` — WebView2
+  defaults them ON, so release builds must turn them off (matches the other
+  backends' developer-extras gating). On show, `controller->MoveFocus(PROGRAMMATIC)`
+  gives the web content initial keyboard focus (Linux uses `grab_focus`).
+- **`should_quit`:** `WM_CLOSE` returns 0 to veto, else `DestroyWindow` →
+  `WM_DESTROY` → `PostQuitMessage`. `terminate` / `window_op` Close post a private
+  `WM_APP_QUIT` (programmatic close, no veto).
+- **Modern title bar:** `DwmSetWindowAttribute` with `DWMWA_WINDOW_CORNER_PREFERENCE`
+  (rounded) and `DWMWA_USE_IMMERSIVE_DARK_MODE` driven by the system
+  `AppsUseLightTheme` setting, re-applied on `WM_SETTINGCHANGE` so it tracks live
+  theme switches — the Windows analogue of libadwaita's `AdwStyleManager`.
+- **Window icon:** `App_Config.icon` (PNG bytes) is decoded at runtime via GDI+
+  (`GdipCreateBitmapFromStream` over an `SHCreateMemStream` of the bytes →
+  `GdipCreateHICONFromBitmap`) and set as the small + large window icon
+  (`WM_SETICON`) — the title-bar/taskbar analogue of the macOS Dock icon. Links
+  `Gdiplus.lib`.
+- **Link:** `WebView2LoaderStatic.lib` is **vendored** at
+  `heimdall/webview2/WebView2LoaderStatic.lib` (static — no `WebView2Loader.dll` to
+  ship) and `foreign import`ed by relative path; `Shlwapi.lib` for `SHCreateMemStream`;
+  Ole32/User32/Dwmapi/Advapi32 come from `core:sys/windows`. The Evergreen
+  **runtime** must be present on the user's machine (it is on current Win10/11;
+  `heimdall doctor` reads its version from the EdgeUpdate registry key).
+- **Packaging:** `cmd_bundle_windows.odin` builds an **Inno Setup installer**
+  (`<App>-<version>-Setup.exe`) plus a portable `.zip` fallback. The app `.exe` is
+  self-contained (no DLLs to stage); `build_binary` embeds the app icon + version
+  as a Win32 resource via `rc.exe` (png→ico generated in-process) and links
+  `-subsystem:windows`. Optionally Authenticode-signs the exe + installer
+  (`signtool`, cert subject from `[sign.windows] identity`). `heimdall doctor`
+  reports the build-time tooling (Inno Setup `iscc`, Windows SDK `rc.exe`) as
+  optional; only the WebView2 runtime is required to *run* a shipped app.

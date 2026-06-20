@@ -9,6 +9,11 @@ for the *how/when*. Keep `CLAUDE.md` lean — detailed sequencing lives here.
 
 ## Strategy: webview/webview first, native backends later
 
+> **Superseded (history).** This phased strategy is how the project was built. All
+> three platforms now have native backends and the `webview/webview` bootstrap +
+> its `heimdall/webview` package have been removed. The sections below are retained
+> as a build log, not current structure.
+
 We bootstrap on **[webview/webview](https://github.com/webview/webview)** (the
 tiny MIT C/C++ library wrapping WKWebView / WebKitGTK / WebView2) rather than
 hand-writing three native backends up front. Reason: its C API already gives us
@@ -56,12 +61,11 @@ heimdall/
     bridge_js.odin
     schema.odin
     assets.odin
-    server.odin        # tiny localhost static server (prod asset serving)
+    server.odin        # tiny localhost static server (unused fallback seam)
     threading.odin
     errors.odin
-    webview/           # package webview — Odin bindings to webview/webview
-      webview.odin
-      lib/             # vendored upstream: webview.h (+ built libwebview per OS)
+    backend_darwin.odin / backend_linux.odin / backend_windows.odin  # native backends
+    webview2/          # vendored WebView2 loader (WebView2LoaderStatic.lib) for Windows
   cli/                 # package main → the `heimdall` binary
     main.odin
     cmd_*.odin
@@ -286,14 +290,19 @@ autocomplete for every command; deleting it doesn't break the build.
       `backend_linux.odin`, the DEFAULT on Linux. AdwHeaderBar title bar that follows
       the system light/dark theme, custom `app://` scheme, `GtkPopoverMenuBar` menus,
       `should_quit` via `close-request`. All `_probe*` pass identically to macOS.
-- [ ] **Windows** WebView2 (COM) — `backend_windows.odin`. **← NEXT.** Last (most
-      tedious). See the Windows section of `docs/platform_notes.md`.
+- [x] **Windows** WebView2 (COM) — `backend_windows.odin`, the DEFAULT on Windows.
+      Hand-laid COM vtables (env/controller/message/resource-requested handlers +
+      EnvironmentOptions for the custom `app://` scheme), `HMENU` menus +
+      accelerators, `should_quit` via `WM_CLOSE`, and the modern Win11 title bar
+      (`DwmSetWindowAttribute` — rounded corners + immersive dark mode following the
+      system theme). All `_probe*` pass identically to macOS/Linux. See the Windows
+      section of `docs/platform_notes.md`.
 - [ ] Tray (reuse `tray-odin`) + native dialogs.
-- [x] Bridge/services/events APIs unchanged across backends — proven on macOS
-      and Linux (all `_probe*` pass identically on webview + native).
+- [x] Bridge/services/events APIs unchanged across backends — proven on macOS,
+      Linux, and Windows (all `_probe*` pass identically on webview + native).
 
-**Done (macOS + Linux):** `examples/hello` runs against the native backend with
-menus + `app://` and identical user-facing code. Repeat the bar for Windows.
+**Done (macOS + Linux + Windows):** `examples/hello` runs against the native
+backend with menus + `app://` and identical user-facing code on all three.
 
 ---
 

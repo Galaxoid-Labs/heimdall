@@ -113,8 +113,60 @@ file_exists :: proc(path: string) -> bool {
 	return os.exists(path)
 }
 
-// Find an executable on PATH (best-effort, via the shell `command -v`).
+// Wrap an external command so it can run on Windows. Package managers and their
+// runners (npm, npx, pnpm, yarn, and the `sv` CLI) are `.cmd`/`.ps1` batch shims,
+// which `CreateProcess` cannot launch directly — so on Windows we route through
+// `cmd /c`. Real `.exe`s (odin, node, bun, deno, git) work either way. On other
+// platforms the command is returned unchanged.
+shell_command :: proc(args: []string, allocator := context.temp_allocator) -> []string {
+	when ODIN_OS == .Windows {
+		out := make([dynamic]string, 0, len(args) + 2, allocator)
+		append(&out, "cmd", "/c")
+		append(&out, ..args)
+		return out[:]
+	} else {
+		return args
+	}
+}
+
+// The host executable suffix — ".exe" on Windows, "" elsewhere. Odin's `-out:`
+// requires the extension on Windows.
+exe_ext :: proc() -> string {
+	when ODIN_OS == .Windows {
+		return ".exe"
+	} else {
+		return ""
+	}
+}
+
+// A binary name with the host executable suffix (Windows: appends ".exe" if not
+// already present). odin's `-out:` requires the extension on Windows.
+exe_name :: proc(base: string, allocator := context.temp_allocator) -> string {
+	ext := exe_ext()
+	if ext == "" || strings.has_suffix(base, ext) {return base}
+	return strings.concatenate({base, ext}, allocator)
+}
+
+// A scratch path under the OS temp dir (the cross-platform replacement for a
+// hardcoded "/tmp/…"). When `is_exe`, appends the host exe suffix so the path is
+// a valid `odin build -out:` target on Windows.
+host_temp_path :: proc(name: string, is_exe := false, allocator := context.temp_allocator) -> string {
+	dir := "/tmp"
+	when ODIN_OS == .Windows {
+		dir = os.get_env("TEMP", allocator)
+		if dir == "" {dir = os.get_env("TMP", allocator)}
+		if dir == "" {dir = "C:\\Windows\\Temp"}
+	}
+	return strings.concatenate({dir, "/", name, is_exe ? exe_ext() : ""}, allocator)
+}
+
+// Find an executable on PATH (best-effort). Uses `where` on Windows, the shell
+// `command -v` elsewhere.
 has_exe :: proc(name: string) -> bool {
-	r := run_capture({"/bin/sh", "-c", fmt.tprintf("command -v %s", name)}, allocator = context.temp_allocator)
+	when ODIN_OS == .Windows {
+		r := run_capture({"where", name}, allocator = context.temp_allocator)
+	} else {
+		r := run_capture({"/bin/sh", "-c", fmt.tprintf("command -v %s", name)}, allocator = context.temp_allocator)
+	}
 	return r.ok && len(strings.trim_space(r.out)) > 0
 }

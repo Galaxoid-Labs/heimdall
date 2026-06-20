@@ -12,11 +12,16 @@ assets_gen.odin
 /heimdall.bin
 # Compiled examples (Odin emits extensionless binaries, usually at the repo root)
 /hello
-/smoke
 /_probe*
 # macOS bundles / installers
 *.app/
 *.dmg
+# Windows build outputs (.exe binaries, debug info, WebView2 user-data dirs
+# created next to a running .exe, and `heimdall bundle` zips). The vendored
+# WebView2LoaderStatic.lib is *.lib and stays committed.
+*.exe
+*.pdb
+*.WebView2/
 # Frontend build output (embedded at build time)
 /dist/
 **/web/dist/
@@ -28,8 +33,8 @@ docs/.vitepress/cache/
 # Keep bun.lock committed (CI uses --frozen-lockfile).
 
 # ── Vendored ─────────────────────────────────────────────────────────────────
-# Keep the committed static lib: heimdall/webview/lib/libwebview.a is vendored.
-# (We ignore object files but NOT *.a.)
+# The Windows WebView2 loader (heimdall/webview2/WebView2LoaderStatic.lib) is a
+# committed *.lib — only object files are ignored.
 *.o
 
 # ── OS / editor cruft ────────────────────────────────────────────────────────

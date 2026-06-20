@@ -7,11 +7,12 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 
-// A tiny loopback HTTP server for production asset serving. webview/webview has
-// no custom-scheme handler, so instead of `app://` we serve the embedded asset
-// map over http://127.0.0.1:<random-free-port>. It binds loopback only (never
-// reachable off-box), serves a read-only map, and closes each connection after
-// one response. Replaced by a real `app://` scheme in the native-backend phase.
+// A tiny loopback HTTP server for production asset serving — a fallback for any
+// backend that can't register a custom `app://` scheme (all current native
+// backends do, via Backend.serves_assets, so this is unused today but kept as a
+// seam). Serves the embedded asset map over http://127.0.0.1:<random-free-port>,
+// bound to loopback only (never reachable off-box), read-only, one response per
+// connection.
 Asset_Server :: struct {
 	socket:   net.TCP_Socket,
 	endpoint: net.Endpoint,

@@ -3,16 +3,13 @@ package main
 import "core:fmt"
 import "core:os"
 
-// `heimdall bundle [--webview] [--skip-build] [--name <bin>] [--sign ...]`
+// `heimdall bundle [--skip-build] [--name <bin>] [--sign ...]`
 // Build a release binary and assemble a distributable package for the host OS:
-//   * macOS — a `.app` bundle (Info.plist, executable, icon), optionally signed/notarized
-//   * Linux — `.deb` and `.rpm` packages (binary + .desktop + icon)
-//
-// Defaults to the native backend. Pass --webview to bundle the webview/webview
-// backend instead.
+//   * macOS   — a `.app` bundle (Info.plist, executable, icon), optionally signed/notarized
+//   * Linux   — `.deb` and `.rpm` packages (binary + .desktop + icon)
+//   * Windows — an Inno Setup installer `.exe` (+ portable `.zip`)
 cmd_bundle :: proc(args: []string) {
 	p := load_project()
-	webview := false // native is the default; --webview opts out
 	skip_build := false
 	do_sign := false
 	adhoc := false
@@ -24,8 +21,6 @@ cmd_bundle :: proc(args: []string) {
 		case "--name":
 			i += 1
 			if i < len(args) {p.name = args[i]}
-		case "--webview":
-			webview = true
 		case "--skip-build":
 			skip_build = true
 		case "--sign":
@@ -40,14 +35,17 @@ cmd_bundle :: proc(args: []string) {
 		i += 1
 	}
 
+	// The output binary name, with the host's executable suffix (Windows: .exe).
+	bin := exe_name(p.name)
+
 	// Build the release binary (unless reusing an existing one). Shared step.
 	if !skip_build {
-		if !build_binary(p, webview, false, p.name) {
+		if !build_binary(p, false, bin) {
 			os.exit(1)
 		}
 	}
-	if !file_exists(p.name) {
-		fmt.eprintfln("heimdall bundle: binary %q not found (build it first)", p.name)
+	if !file_exists(bin) {
+		fmt.eprintfln("heimdall bundle: binary %q not found (build it first)", bin)
 		os.exit(1)
 	}
 
@@ -56,8 +54,11 @@ cmd_bundle :: proc(args: []string) {
 	} else when ODIN_OS == .Linux {
 		_ = do_sign;_ = adhoc;_ = notarize // signing is macOS-only for now
 		bundle_linux(p)
+	} else when ODIN_OS == .Windows {
+		_ = adhoc;_ = notarize // notarization is macOS-only
+		bundle_windows(p, bin, do_sign)
 	} else {
-		fmt.eprintln("heimdall bundle: only macOS (.app) and Linux (.deb/.rpm) are supported")
+		fmt.eprintln("heimdall bundle: unsupported host platform")
 		os.exit(1)
 	}
 }

@@ -9,7 +9,6 @@ import "core:strings"
 cmd_build :: proc(args: []string) {
 	p := load_project()
 	skip_frontend := false
-	webview := false // native is the default on macOS; --webview opts out
 
 	i := 0
 	for i < len(args) {
@@ -19,24 +18,20 @@ cmd_build :: proc(args: []string) {
 			if i < len(args) {p.name = args[i]}
 		case "--skip-frontend":
 			skip_frontend = true
-		case "--webview":
-			webview = true // force the webview/webview backend
-		case "--native":
-			webview = false // explicit default
 		}
 		i += 1
 	}
 
-	if !build_binary(p, webview, skip_frontend, p.name) {
+	out := exe_name(p.name)
+	if !build_binary(p, skip_frontend, out) {
 		os.exit(1)
 	}
-	fmt.printfln("heimdall build: done -> ./%s", p.name)
+	fmt.printfln("heimdall build: done -> ./%s", out)
 }
 
 // Shared release-build pipeline: frontend build -> embed -> compile to `out`.
-// Reused by `heimdall bundle`. `webview` forces the webview/webview backend
-// (native is the default on macOS). Returns false on any step failure.
-build_binary :: proc(p: Project, webview: bool, skip_frontend: bool, out: string) -> bool {
+// Reused by `heimdall bundle`. Returns false on any step failure.
+build_binary :: proc(p: Project, skip_frontend: bool, out: string) -> bool {
 	// 0) Refresh the typed client (if enabled) before the frontend build, since the
 	//    frontend may import it.
 	maybe_regenerate_bindings(p)
@@ -44,7 +39,7 @@ build_binary :: proc(p: Project, webview: bool, skip_frontend: bool, out: string
 	// 1) Frontend production build (in web_dir).
 	if !skip_frontend {
 		fmt.printfln("heimdall build: frontend (%s) in %s", p.build_cmd, p.web_dir)
-		if !run_inherit(split_args(p.build_cmd), p.web_dir) {
+		if !run_inherit(shell_command(split_args(p.build_cmd)), p.web_dir) {
 			fmt.eprintln("heimdall build: frontend build failed")
 			return false
 		}
@@ -61,8 +56,14 @@ build_binary :: proc(p: Project, webview: bool, skip_frontend: bool, out: string
 	if p.collection != "" {
 		append(&odin_cmd, fmt.tprintf("-collection:%s", p.collection))
 	}
-	if webview {
-		append(&odin_cmd, "-define:HEIMDALL_WEBVIEW=true")
+	// Windows: mark the exe as a GUI app (no console window flashing behind the
+	// webview) and embed an icon + version resource (so Explorer / shortcuts show
+	// the app icon). Best-effort — skips cleanly if rc.exe or the icon is absent.
+	when ODIN_OS == .Windows {
+		append(&odin_cmd, "-subsystem:windows")
+		if res := windows_build_resource(p); res != "" {
+			append(&odin_cmd, res)
+		}
 	}
 	fmt.printfln("heimdall build: compiling -> %s", out)
 	if !run_inherit(odin_cmd[:]) {

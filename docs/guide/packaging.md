@@ -4,7 +4,6 @@
 
 ```sh
 heimdall build              # frontend build → embed assets → compile -> ./myapp
-heimdall build --webview    # opt into the webview/webview backend (native is default on macOS & Linux)
 ```
 
 The result is a single executable with your frontend embedded.
@@ -60,10 +59,52 @@ category    = "Utility;Development;" # freedesktop Categories for the .desktop
 # deb_depends = "libwebkitgtk-6.0-4, libadwaita-1-0, libgtk-4-1"
 ```
 
+## Bundle for Windows (installer `.exe` + portable `.zip`)
+
+On Windows, `heimdall bundle` builds an **Inno Setup installer** (the same approach
+as a typical Odin desktop app), plus a portable zip:
+
+```sh
+heimdall bundle             # -> ./dist/windows/MyApp-1.0.0-Setup.exe
+                            #    ./dist/windows/myapp-1.0.0-portable.zip
+```
+
+The heimdall app `.exe` is **self-contained** — your frontend is embedded, the
+WebView2 loader is linked statically, and the WebView2 runtime is a system
+dependency — so there are no DLLs to ship. The installer lays down the single
+binary, Start-menu and optional desktop shortcuts, and an uninstaller; with
+`PrivilegesRequired=lowest` it installs per-user (no admin prompt) by default.
+
+**What end users need:** just run the `Setup.exe`. The only runtime dependency is
+the **WebView2 Evergreen runtime**, which ships with current Windows 10/11, so most
+users already have it. They do **not** need Inno Setup, the Windows SDK, Odin, or
+anything else — those are build-time tools for *you*.
+
+**Build-time tooling** (checked by `heimdall doctor`, both optional):
+
+- **Inno Setup 6** (`iscc.exe`) — produces the installer. Without it, `bundle`
+  still writes the portable `.zip`. Install: `winget install JRSoftware.InnoSetup6`.
+- **Windows SDK** (`rc.exe`) — embeds the app icon + version info into the `.exe`
+  (so Explorer and shortcuts show your icon). Without it the build still succeeds
+  with a generic icon. The release build is also linked `-subsystem:windows` so no
+  console window flashes behind the webview.
+
+**Metadata** comes from `heimdall.toml` (with `[bundle.windows]` overrides):
+
+```toml
+[bundle]
+identifier   = "com.example.myapp"   # Inno AppId (uninstall registry key)
+version      = "1.0.0"
+display_name = "My App"              # installer + shortcut name
+maintainer   = "Your Name"          # installer "Publisher"
+homepage     = "https://example.com"
+icon         = "icon.png"            # .png (converted to .ico) or .ico
+```
+
 ## Code signing
 
 Signing dispatches per platform: macOS uses `codesign` + notarization; Windows
-uses `signtool` (stubbed for now); **Linux needs no signing**.
+uses `signtool` (Authenticode); **Linux needs no signing**.
 
 ```sh
 heimdall bundle --adhoc            # ad-hoc signature — local testing, no certificate
@@ -75,6 +116,11 @@ heimdall sign [target]             # sign an existing app
 The identity comes from `[sign].identity` or `HEIMDALL_SIGN_IDENTITY`. Ad-hoc
 signing needs no certificate and is fine for local runs, but other Macs require a
 Developer ID + notarization.
+
+On **Windows**, `heimdall bundle --sign` runs `signtool` (from the Windows SDK) on
+both the app `.exe` and the installer, timestamping with SHA-256. The certificate
+subject comes from `[sign.windows].identity`; if unset, `signtool /a` auto-selects
+the best available cert in your store.
 
 ### Notarization credentials
 

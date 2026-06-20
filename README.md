@@ -36,8 +36,9 @@ const { message } = await greeting.greet({ name: "Jake" })
 
 ## Get started
 
-Needs [Odin](https://odin-lang.org/docs/install/) and [Bun](https://bun.sh)
-(`heimdall doctor` checks your setup).
+Needs [Odin](https://odin-lang.org/docs/install/) and a JS runtime —
+[Node.js](https://nodejs.org) or [Bun](https://bun.sh) (`heimdall doctor` checks
+your setup).
 
 ```sh
 # Build the CLI. The root `heimdall/` is the framework package, so name the
@@ -52,13 +53,15 @@ cd myapp && heimdall dev           # a window opens, wired to Odin
 
 Pick a frontend with `--frontend`: `vanilla` (dependency-free, offline) or
 `sveltekit` (runs the official `sv create` — you pick template + TypeScript — and
-heimdall wires it for static embedding). For SvelteKit: `--pm bun|npm|pnpm|yarn|deno`
-(default bun) and `--add <sv-addon>` (repeatable) for Svelte add-ons, e.g.
-`--add tailwindcss=plugins:typography`. heimdall adds the static adapter itself —
-don't add `sveltekit-adapter`.
+heimdall wires it for static embedding). Choose a package manager with
+`--pm bun|npm|pnpm|yarn|deno` (default bun; vanilla is dependency-free so any
+works). SvelteKit also takes `--add <sv-addon>` (repeatable) for Svelte add-ons,
+e.g. `--add tailwindcss=plugins:typography`; heimdall adds the static adapter
+itself — don't add `sveltekit-adapter`.
 
 Edit your Odin or frontend and `dev` reloads. Ship with `heimdall build` (a single
-binary) or `heimdall bundle` (a macOS `.app`, or `.deb` + `.rpm` on Linux).
+binary) or `heimdall bundle` (a macOS `.app`, `.deb` + `.rpm` on Linux, or an Inno
+Setup installer `.exe` on Windows).
 
 ---
 
@@ -158,8 +161,7 @@ Wayland — e.g. `center`/`always_on_top`.)
 
 ```sh
 heimdall build                     # single binary, assets embedded -> ./myapp
-heimdall build --webview           # opt into webview/webview (native is default on macOS & Linux)
-heimdall bundle                    # macOS .app, or Linux .deb + .rpm
+heimdall bundle                    # macOS .app, Linux .deb + .rpm, Windows installer .exe
 heimdall bundle --sign --notarize  # Developer ID signing + Apple notarization (macOS)
 ```
 
@@ -175,7 +177,7 @@ a GitHub Actions workflow for signed releases — see [`docs/ci.md`](docs/ci.md)
 | `new <name>` | Scaffold a project (`--frontend vanilla\|sveltekit`, `--pm …`, `--add <sv-addon>`). |
 | `dev` | Run the dev server + app; reload on change. |
 | `build` | Frontend build → embed → compile a release binary. |
-| `bundle` | Package the app — macOS `.app` (`--sign`/`--notarize`) or Linux `.deb` + `.rpm`. |
+| `bundle` | Package the app — macOS `.app` (`--sign`/`--notarize`), Linux `.deb` + `.rpm`, or Windows installer `.exe` + `.zip`. |
 | `sign [target]` | Code-sign an app. |
 | `generate-bindings` | Emit a typed JS client (`.js`+`.d.ts`) from your command types. |
 | `doctor` | Check the toolchain and platform deps. |
@@ -210,10 +212,9 @@ signing/notarization credentials come from environment variables.
 
 ## Status
 
-Runs natively on **macOS** (WKWebView) and **Linux** (GTK4 + libadwaita + WebKitGTK) — each the
-default on its platform, with the cross-platform webview/webview backend a
-`--webview` opt-out. The **Windows** native backend (WebView2) is scaffolded but
-not yet built. Full breakdown, repo layout, and how the tests work:
+Runs natively on **macOS** (WKWebView), **Linux** (GTK4 + libadwaita + WebKitGTK),
+and **Windows** (WebView2 / COM) — one native backend per platform, no fallback.
+Full breakdown, repo layout, and how the tests work:
 **[docs/internals.md](docs/internals.md)**.
 
 ## Docs

@@ -3,7 +3,6 @@
 Define a native menu bar by setting `menu` on `App_Config` — you describe your own
 menus (File, View, Help, …) and heimdall renders them per platform.
 
-> Native menus are a **native-backend** feature (the default on macOS and Linux).
 > Platform behavior differs where it should:
 >
 > - **macOS** — a global menu bar. The standard **Application**, **Edit**, and
@@ -14,9 +13,7 @@ menus (File, View, Help, …) and heimdall renders them per platform.
 >   menu). Role items map to GTK/WebKit where one exists; macOS-only roles
 >   (About, Hide, Show All, Zoom) are skipped.
 >
-> If you opt into the webview/webview backend with `--webview`, it has no menu
-> support and ignores `menu`. Use `"CmdOrCtrl+…"` accelerators for cross-platform
-> shortcuts.
+> Use `"CmdOrCtrl+…"` accelerators for cross-platform shortcuts.
 
 ## Define menus
 

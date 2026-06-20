@@ -5,11 +5,10 @@ import "core:fmt"
 // Internal backend abstraction — the seam that lets the native shell swap out
 // without the bridge, services, events, or user code changing.
 //
-// Today the only implementation is `backend_webview.odin` (over webview/webview).
-// The native backends — WKWebView (objc), WebKitGTK (C), WebView2 (COM) — will
-// implement this same vtable in backend_darwin/linux/windows.odin. The framework
-// only ever calls through `app.backend.*`; it never touches a concrete webview
-// type.
+// One native implementation per platform — WKWebView (objc) in backend_darwin,
+// WebKitGTK (C/GObject) in backend_linux, WebView2 (COM) in backend_windows — all
+// filling this same vtable. The framework only ever calls through `app.backend.*`;
+// it never touches a concrete webview type.
 //
 // Two things flow the other way (backend -> framework), via the generic entry
 // points at the bottom of this file: an inbound JS invoke (`backend_on_request`)
@@ -17,8 +16,8 @@ import "core:fmt"
 // translate their native callbacks into these calls.
 
 // Opaque per-request reply token. The backend defines what it really is (the
-// webview backend stores the C `id` cstring); the framework treats it as a
-// handle to pass back to `reply`.
+// native backends carry the JS-side correlation id as a cstring); the framework
+// treats it as a handle to pass back to `reply`.
 Request_Id :: distinct rawptr
 
 // The vtable. Every proc takes `^App` so implementations can reach their private
@@ -28,8 +27,8 @@ Backend :: struct {
 
 	// True if the backend serves embedded assets itself (a custom app:// scheme),
 	// so `run` should navigate to app://localhost/ instead of starting the
-	// loopback Asset_Server. webview/webview has no custom-scheme API, so it
-	// leaves this false and uses the loopback server.
+	// loopback Asset_Server. All native backends set this; the loopback
+	// Asset_Server remains as a fallback for backends that can't register a scheme.
 	serves_assets: bool,
 
 	set_title: proc(app: ^App, title: string),

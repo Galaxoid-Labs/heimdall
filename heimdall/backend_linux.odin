@@ -2,10 +2,9 @@
 package heimdall
 
 // Native Linux backend — GTK 4 + libadwaita + WebKitGTK (webkitgtk-6.0), via
-// `foreign import` C / GObject. Implements the same Backend vtable as
-// backend_webview.odin and backend_darwin.odin, so the bridge / services / events
-// / user code are unchanged. The DEFAULT on Linux; -define:HEIMDALL_WEBVIEW=true
-// forces the cross-platform webview/webview backend instead.
+// `foreign import` C / GObject. Fills the same Backend vtable as the macOS and
+// Windows backends, so the bridge / services / events / user code are
+// platform-agnostic. This is the Linux backend.
 //
 // Why GTK4 + libadwaita: the window uses an AdwHeaderBar title bar, and `adw_init`
 // makes the whole UI follow the system light/dark preference automatically
@@ -255,8 +254,7 @@ linux_backend_create :: proc(app: ^App, debug: bool) -> bool {
 	}
 
 	// Closing the window honors should_quit (close-request veto), then ends the
-	// loop. This is the native window-close hook the webview/webview backend can't
-	// provide.
+	// loop — the native window-close hook for should_quit.
 	g_signal_connect_data(lin.window, "close-request", auto_cast lin_close_request_cb, lin, nil, 0)
 
 	// Initial window state from App_Config (best-effort; Wayland forbids some).

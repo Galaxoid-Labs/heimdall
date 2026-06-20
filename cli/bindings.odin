@@ -37,7 +37,7 @@ write_client_bindings :: proc(
 ) -> bool {
 	ensure_assets_stub(dir, import_path)
 
-	bin := "/tmp/heimdall_schema_dump"
+	bin := host_temp_path("heimdall_schema_dump", is_exe = true)
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", pkg, "-define:HEIMDALL_SCHEMA=true", fmt.tprintf("-out:%s", bin))
 	append(&cmd, ..extra)
@@ -65,7 +65,7 @@ write_client_bindings :: proc(
 		base = strings.concatenate({dir, "/", out_base}, context.temp_allocator)
 	}
 	if parent := filepath.dir(base); parent != "" && parent != "." {
-		run_inherit({"mkdir", "-p", parent})
+		os.make_directory_all(parent)
 	}
 
 	js := generate_client_js(schema, context.temp_allocator)

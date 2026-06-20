@@ -57,10 +57,10 @@ Frontend :: struct {
 FRONTENDS := []Frontend {
 	{
 		key = "vanilla",
-		blurb = "dependency-free, bun-served (offline, zero deps)",
+		blurb = "dependency-free static files (any --pm: node/bun/deno, zero deps)",
 		dist_dir = "web/dist",
 		bindings = "web/src/heimdall.gen",
-		uses_pm = false,
+		uses_pm = true,
 		deps = false,
 		scaffold = scaffold_vanilla,
 	},
@@ -150,16 +150,8 @@ cmd_new :: proc(args: []string) {
 		bindings = fe.bindings,
 		addons   = addons[:],
 	}
-	if fe.uses_pm {
-		ctx.dev_cmd = pm.dev_cmd
-		ctx.build_cmd = pm.build_cmd
-	} else {
-		ctx.dev_cmd = "bun run dev"
-		ctx.build_cmd = "bun run build"
-		if pm.key != "bun" {
-			fmt.eprintfln("heimdall new: --pm %s ignored (the vanilla frontend is bun-based)", pm.key)
-		}
-	}
+	ctx.dev_cmd = pm.dev_cmd
+	ctx.build_cmd = pm.build_cmd
 
 	// Shared Odin/heimdall shell (written for every frontend).
 	write_file_p(cat(name, "/main.odin"), render(TMPL_MAIN, &ctx))
@@ -176,9 +168,9 @@ cmd_new :: proc(args: []string) {
 		os.exit(1)
 	}
 
-	// Vendor the framework package into ./<name>/heimdall.
-	if !run_inherit({"cp", "-R", framework, cat(name, "/heimdall")}) {
-		fmt.eprintln("heimdall new: failed to vendor framework")
+	// Vendor the framework package into ./<name>/heimdall (cross-platform copy).
+	if err := os.copy_directory_all(cat(name, "/heimdall"), framework); err != nil {
+		fmt.eprintfln("heimdall new: failed to vendor framework: %v", err)
 		os.exit(1)
 	}
 
@@ -263,7 +255,12 @@ scaffold_vanilla :: proc(ctx: ^Scaffold_Ctx) -> bool {
 	d := ctx.dir
 	write_file_p(cat(d, "/web/index.html"), render(TMPL_INDEX_HTML, ctx))
 	write_file_p(cat(d, "/web/src/main.js"), render(TMPL_MAIN_JS, ctx))
-	write_file_p(cat(d, "/web/package.json"), render(TMPL_PACKAGE_JSON, ctx))
+	// deno uses `deno task` (deno.json); the rest use package.json scripts.
+	if ctx.pm.key == "deno" {
+		write_file_p(cat(d, "/web/deno.json"), render(TMPL_DENO_JSON, ctx))
+	} else {
+		write_file_p(cat(d, "/web/package.json"), render(TMPL_PACKAGE_JSON, ctx))
+	}
 	write_file_p(cat(d, "/web/dev.js"), render(TMPL_DEV_JS, ctx))
 	write_file_p(cat(d, "/web/build.js"), render(TMPL_BUILD_JS, ctx))
 	return true
@@ -296,7 +293,7 @@ scaffold_sveltekit :: proc(ctx: ^Scaffold_Ctx) -> bool {
 	}
 
 	fmt.println("\nheimdall new: launching SvelteKit setup (sv create) — follow the prompts…\n")
-	if !run_inherit(cmd, ctx.dir) {
+	if !run_inherit(shell_command(cmd), ctx.dir) {
 		fmt.eprintln("heimdall new: `sv create` did not complete")
 		return false
 	}
@@ -309,7 +306,7 @@ scaffold_sveltekit :: proc(ctx: ^Scaffold_Ctx) -> bool {
 	// idempotent — a no-op if node_modules already exists).
 	if !file_exists(cat(web, "/node_modules")) {
 		install := ctx.pm.key == "deno" ? []string{"deno", "install"} : []string{ctx.pm.key, "install"}
-		run_inherit(install, web)
+		run_inherit(shell_command(install), web)
 	}
 	return true
 }
@@ -391,12 +388,32 @@ render :: proc(tmpl: string, ctx: ^Scaffold_Ctx) -> string {
 	s, _ = strings.replace_all(s, "__DEV_CMD__", ctx.dev_cmd, context.temp_allocator)
 	s, _ = strings.replace_all(s, "__BUILD_CMD__", ctx.build_cmd, context.temp_allocator)
 	s, _ = strings.replace_all(s, "__BINDINGS__", ctx.bindings, context.temp_allocator)
+	s, _ = strings.replace_all(s, "__JS_RUNTIME__", js_runtime(ctx.pm.key), context.temp_allocator)
 	return s
+}
+
+// The runtime that executes the vanilla starter's dev.js / build.js for a given
+// package manager. The scripts are written node-style (node: APIs), which all
+// three runtimes support.
+@(private = "file")
+js_runtime :: proc(pm_key: string) -> string {
+	switch pm_key {
+	case "bun":
+		return "bun"
+	case "deno":
+		return "deno run -A"
+	case:
+		return "node" // npm / pnpm / yarn
+	}
 }
 
 @(private = "file")
 mkdir_p :: proc(path: string) {
-	run_inherit({"mkdir", "-p", path})
+	if path == "" || path == "." {return}
+	if err := os.make_directory_all(path); err != nil && err != .Exist {
+		fmt.eprintfln("heimdall new: failed to create %s: %v", path, err)
+		os.exit(1)
+	}
 }
 
 @(private = "file")
@@ -508,8 +525,8 @@ identifier   = "com.example.__NAME__"
 version      = "0.1.0"
 build        = "1"
 display_name = "__TITLE__"
-icon         = "icon.png"   # app icon (bundled: .icns on macOS, hicolor on Linux)
-# Linux .deb/.rpm metadata (optional):
+icon         = "icon.png"   # app icon (macOS .icns, Linux hicolor, Windows .ico + exe resource)
+# Used across platforms; on Windows, maintainer -> installer Publisher, homepage -> its URL:
 # summary     = "A short one-liner"
 # description = "A longer description."
 # maintainer  = "Your Name <you@example.com>"
@@ -525,6 +542,11 @@ min_macos    = "11.0"
 category     = "Utility;"   # freedesktop Categories for the .desktop entry
 # deb_depends = "libwebkitgtk-6.0-4, libadwaita-1-0, libgtk-4-1"  # .deb only; .rpm auto-detects
 
+# Windows: 'heimdall bundle' makes an Inno Setup installer (.exe) + a portable .zip.
+# The app .exe is self-contained (no DLLs); end users only need the WebView2 runtime,
+# which ships with Win10/11. Building the installer needs Inno Setup 6 on YOUR machine
+# (winget install JRSoftware.InnoSetup6); without it you still get the .zip. The app
+# icon/version are embedded via the Windows SDK's rc.exe. Run 'heimdall doctor' to check.
 # [bundle.windows]
 
 # Code signing for ` + "`heimdall sign`" + ` / ` + "`heimdall bundle --sign`" + `.
@@ -633,27 +655,49 @@ TMPL_PACKAGE_JSON :: `{
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run dev.js",
-    "build": "bun run build.js"
+    "dev": "__JS_RUNTIME__ dev.js",
+    "build": "__JS_RUNTIME__ build.js"
+  }
+}
+`
+
+// For --pm deno (which uses `deno task`, not package.json scripts).
+TMPL_DENO_JSON :: `{
+  "tasks": {
+    "dev": "deno run -A dev.js",
+    "build": "deno run -A build.js"
   }
 }
 `
 
 TMPL_DEV_JS :: `// Minimal static dev server (no deps). Serves the web/ folder on :5173.
+// Written with node: APIs so it runs the same under node, bun, and deno.
+import { createServer } from "node:http";
+import { readFile } from "node:fs";
+import { extname, join, normalize } from "node:path";
+
 const PORT = 5173;
-Bun.serve({
-  port: PORT,
-  fetch(req) {
-    let path = new URL(req.url).pathname;
-    if (path === "/") path = "/index.html";
-    return new Response(Bun.file("." + path));
-  },
-});
-console.log("dev server -> http://localhost:" + PORT);
+const MIME = {
+  ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+  ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png",
+  ".ico": "image/x-icon", ".woff2": "font/woff2",
+};
+
+createServer((req, res) => {
+  let p = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+  if (p === "/") p = "/index.html";
+  const file = join(".", normalize(p));
+  readFile(file, (err, data) => {
+    if (err) { res.statusCode = 404; res.end("not found"); return; }
+    res.setHeader("Content-Type", MIME[extname(file)] || "application/octet-stream");
+    res.end(data);
+  });
+}).listen(PORT, () => console.log("dev server -> http://localhost:" + PORT));
 `
 
 TMPL_BUILD_JS :: `// Copy the static frontend into dist/. Replace with your bundler if you like.
-import { mkdirSync, rmSync, cpSync } from "fs";
+// node: APIs so it runs under node, bun, and deno alike.
+import { mkdirSync, rmSync, cpSync } from "node:fs";
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
 cpSync("index.html", "dist/index.html");

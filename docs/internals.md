@@ -16,52 +16,56 @@ heimdall/
     service.odin             # service()/command() registration + thunks
     bridge.odin              # request parsing/encoding (backend-agnostic)
     backend.odin             # the Backend vtable + inbound-request flow
-    backend_webview.odin     # webview/webview implementation of the vtable
     backend_darwin.odin      # native macOS WKWebView implementation (objc interop)
     backend_linux.odin       # native GTK4 + libadwaita + webkitgtk-6.0 backend
-    backend_windows.odin     # native WebView2 scaffold
+    backend_windows.odin     # native WebView2 backend (COM)
     events.odin              # emit() event bus
     threading.odin           # dispatch_main, terminate
     shim.odin                # the injected JS client (window.heimdall / __HEIMDALL__)
     schema.odin              # schema-dump mode (reflect -> JSON) for typed bindings
     assets.odin              # Asset type + MIME guessing
-    server.odin              # loopback static server (prod assets, webview backend)
+    server.odin              # loopback static server (unused fallback seam — see below)
     errors.odin              # the Error union
-    webview/                 # Odin bindings to the vendored webview/webview C lib
   cli/                       # the `heimdall` CLI (self-contained, no framework import)
-  examples/                  # hello, smoke, and headless _probe* self-tests
+  examples/                  # hello and headless _probe* self-tests
   docs/
 ```
 
 ## The backend vtable
 
 The framework only ever talks to `app.backend.*` — a `Backend` struct of procs
-(`backend.odin`). This is the seam that lets the native shell swap out without the
-bridge, services, events, or user code changing.
+(`backend.odin`). This is the seam between the bridge/services/events/user code and
+the per-platform native shell: each platform fills in the same vtable.
 
-- **`backend_webview.odin`** — the default, over the cross-platform
-  [webview/webview](https://github.com/webview/webview) C library. All
-  webview-specifics (the C trampolines, the cstring request id) live here.
 - **`backend_darwin.odin`** — a hand-written native macOS shell (NSApplication +
   NSWindow + WKWebView + a runtime-registered `WKScriptMessageHandler` +
-  `NSWindowDelegate`), via Objective-C interop. Selected with
-  the default on macOS (`-define:HEIMDALL_WEBVIEW=true` opts out). Serves assets
+  `NSWindowDelegate`), via Objective-C interop. The macOS backend. Serves assets
   over a custom `app://`
   `WKURLSchemeHandler` (no loopback server) and enforces `should_quit`.
 - **`backend_linux.odin`** — a hand-written native Linux shell on **GTK4 +
   libadwaita + webkitgtk-6.0** (GtkWindow + AdwHeaderBar + WebKitWebView + a
   `WebKitUserContentManager` script-message handler), via plain GObject/C
-  `foreign import`. The default on Linux (`-define:HEIMDALL_WEBVIEW=true` opts
-  out). `adw_init` makes the title bar follow the system light/dark theme. Serves
+  `foreign import`. The Linux backend. `adw_init` makes the title bar follow the
+  system light/dark theme. Serves
   assets over a custom `app://` scheme (no loopback server), enforces `should_quit`
   via the window `close-request`, and renders the user's menus as a
   `GtkPopoverMenuBar` (GMenu + actions).
-- **`backend_windows.odin`** — a `#+build`-gated scaffold with implementation
-  notes; not yet wired in. See [`platform_notes.md`](platform_notes.md).
+- **`backend_windows.odin`** — native WebView2 backend via hand-laid COM vtables.
+  Serves assets over a custom `app://` scheme (registered through
+  `ICoreWebView2EnvironmentOptions4`), enforces `should_quit` via `WM_CLOSE`,
+  renders the user's menus as an `HMENU` (with an accelerator table), and uses
+  `DwmSetWindowAttribute` for the modern Win11 title bar (rounded corners +
+  immersive dark mode that follows the system theme). See
+  [`platform_notes.md`](platform_notes.md).
 
 Two things flow back into the framework: `backend_on_request` (an inbound JS
 `invoke`) and the proc handed to `dispatch` (a UI-thread task). Backends translate
 their native callbacks into those.
+
+The loopback static server in `server.odin` is now an **unused fallback seam**: a
+backend that can't register a custom `app://` scheme would serve prod assets over
+it instead. All three current native backends register `app://` directly, so none
+of them use it.
 
 ## Status
 
@@ -69,16 +73,17 @@ their native callbacks into those.
 | --- | --- |
 | Bridge: services + `invoke` | ✅ |
 | Event bus (`emit`/`on`) + threading | ✅ |
-| Asset embed + serving (loopback + `app://`) | ✅ |
+| Asset embed + serving (`app://`) | ✅ |
 | Lifecycle hooks, errors, allocator hygiene | ✅ |
 | CLI: new/dev/build/bundle/sign/embed/generate-bindings/doctor | ✅ (`dev` watch loop lightly tested) |
 | Typed bindings (`generate-bindings`) | ✅ |
 | Native macOS WKWebView backend | ✅ |
 | Native Linux backend (GTK4 + libadwaita + webkitgtk-6.0) | ✅ |
-| Native menus (custom + role + custom-event items; macOS adds App/Edit/Window) | ✅ macOS + Linux |
+| Native Windows backend (WebView2 / COM) | ✅ |
+| Native menus (custom + role + custom-event items; macOS adds App/Edit/Window) | ✅ macOS + Linux + Windows |
 | macOS `.app` bundling + code signing + notarization | ✅ (notarization needs a real Apple account to exercise) |
-| Native Windows (WebView2) | ⏳ scaffolded |
-| Deep linking (`myapp://`), `.dmg`, Windows `signtool` | ⏳ future |
+| Windows installer (Inno Setup `.exe`) + portable `.zip` + `signtool` signing | ✅ |
+| Deep linking (`myapp://`), `.dmg` | ⏳ future |
 
 ## How verification works
 
@@ -88,19 +93,18 @@ writes a JSON artifact to `/tmp` — so they're CI-checkable without a human cli
 
 - `_probe` — invoke round-trip + reject path
 - `_probe_events` — events emitted from a worker thread, in order
-- `_probe_assets` — asset serving (loopback on webview, `app://` on native)
+- `_probe_assets` — asset serving over `app://`
 - `_probe_lifecycle` — `on_startup` / `on_shutdown` via `terminate`
 - `_probe_alloc` — zero leaks / bad frees under a tracking allocator
 
-Run one against a backend:
+Run one against the platform's backend:
 
 ```sh
-odin run examples/_probe -collection:src=.                               # native (default on macOS & Linux)
-odin run examples/_probe -collection:src=. -define:HEIMDALL_WEBVIEW=true  # webview backend
+odin run examples/_probe -collection:src=.
 ```
 
-All probes produce identical artifacts on both backends — same user code, different
-native shell.
+All probes produce identical artifacts on every platform — same user code,
+different native shell.
 
 ## Branding
 
@@ -144,8 +148,6 @@ deploys to GitHub Pages via `.github/workflows/docs.yml` (enable in repo Setting
 - Framework examples build with `-collection:src=.` and import
   `hd "src:heimdall"`. Generated user apps vendor the framework into `./heimdall/`
   and import `hd "heimdall"` (no collection).
-- The static `libwebview.a` is committed under `heimdall/webview/lib/`; rebuild it
-  from the vendored upstream with `heimdall/webview/lib/build_lib.sh`.
 - Odin gotchas that bit us (see `DECISIONS.md`): filename suffixes like `_js` are
   build-target gates; `fmt` treats `{` as a token (don't pass literal braces as a
   format); generated map-literal files need `#+feature dynamic-literals`.

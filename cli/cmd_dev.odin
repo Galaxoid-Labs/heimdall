@@ -11,10 +11,6 @@ import "core:time"
 // Exits when the app window is closed.
 cmd_dev :: proc(args: []string) {
 	p := load_project()
-	webview := false // native is the default on macOS; --webview opts out
-	for a in args {
-		if a == "--webview" {webview = true}
-	}
 	ensure_assets_stub(".", p.import_path)
 	maybe_regenerate_bindings(p) // keep the typed client fresh for this session
 
@@ -25,7 +21,7 @@ cmd_dev :: proc(args: []string) {
 	free_port(port)
 
 	fmt.printfln("heimdall dev: frontend (%s) in %s", p.dev_cmd, p.web_dir)
-	fe, fe_ok := start_bg(split_args(p.dev_cmd), p.web_dir)
+	fe, fe_ok := start_bg(shell_command(split_args(p.dev_cmd)), p.web_dir)
 	if !fe_ok {
 		os.exit(1)
 	}
@@ -34,7 +30,7 @@ cmd_dev :: proc(args: []string) {
 		free_port(port)
 	}
 
-	bin := fmt.tprintf("/tmp/heimdall-dev-%s", p.name)
+	bin := host_temp_path(fmt.tprintf("heimdall-dev-%s", p.name), is_exe = true)
 	last_sig := watch_signature(".")
 	app: os.Process
 	app_running := false
@@ -43,7 +39,7 @@ cmd_dev :: proc(args: []string) {
 	fmt.println("heimdall dev: watching .odin files (close the window to stop)")
 	for {
 		if !app_running {
-			if dev_build(p, bin, webview) {
+			if dev_build(p, bin) {
 				a, started := start_bg({bin})
 				if started {
 					app = a
@@ -112,14 +108,11 @@ free_port :: proc(port: string) {
 }
 
 @(private = "file")
-dev_build :: proc(p: Project, bin: string, webview: bool) -> bool {
+dev_build :: proc(p: Project, bin: string) -> bool {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "build", ".", "-define:HEIMDALL_DEV=true", fmt.tprintf("-out:%s", bin))
 	if p.collection != "" {
 		append(&cmd, fmt.tprintf("-collection:%s", p.collection))
-	}
-	if webview {
-		append(&cmd, "-define:HEIMDALL_WEBVIEW=true")
 	}
 	return run_inherit(cmd[:])
 }

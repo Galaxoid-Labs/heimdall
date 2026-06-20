@@ -1,8 +1,8 @@
 # Window
 
 heimdall gives you one **unified, platform-agnostic** window API — the same calls
-on macOS, Linux, and (later) Windows. Each backend implements the platform bits
-under the hood; your code never branches on OS.
+on macOS, Linux, and Windows. Each backend implements the platform bits under the
+hood; your code never branches on OS.
 
 ## Initial state (`App_Config`)
 
@@ -25,7 +25,7 @@ app, _ := hd.create(hd.App_Config{
 
 > **Platform note:** `center` and `always_on_top` are best-effort. Under **Wayland**
 > a client can't position or raise its own window, so they're no-ops there (they
-> work on macOS). Everything else is honored on all native backends.
+> work on macOS and Windows). Everything else is honored on all native backends.
 
 ## Control it at runtime — from Odin
 

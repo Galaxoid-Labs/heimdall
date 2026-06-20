@@ -9,7 +9,7 @@ heimdall <command> [args]
 | `new <name>` | Scaffold a new project (frontend + vendored framework + CI workflow). See flags below. |
 | `dev` | Start the frontend dev server + app; rebuild and relaunch on change. |
 | `build` | Frontend build → embed assets → compile a release binary. |
-| `bundle` | Package the app — macOS `.app`, or Linux `.deb` + `.rpm`. |
+| `bundle` | Package the app — macOS `.app`, Linux `.deb` + `.rpm`, or Windows installer `.exe` + `.zip`. |
 | `sign [target]` | Code-sign an app. |
 | `generate-bindings` | Run the app in schema mode and emit a typed JS client (`.js`+`.d.ts`). |
 | `embed <dir> <out>` | Generate the embedded asset map (used by `build`). |
@@ -37,12 +37,6 @@ heimdall <command> [args]
 - `--framework <path>` — path to the framework package to vendor (alternative to
   `HEIMDALL_HOME`).
 
-### `dev` · `build` · `bundle`
-
-- `--webview` — use the cross-platform webview/webview backend. The native
-  backend (WKWebView on macOS, WebKitGTK on Linux) is the default; this opts out
-  of it.
-
 ### `build`
 
 - `--name <bin>` — output binary name (default from `heimdall.toml`).
@@ -50,15 +44,18 @@ heimdall <command> [args]
 
 ### `bundle`
 
-Packages for the host OS: a macOS `.app`, or on Linux **both** a `.deb` and a
-`.rpm` (see [Packaging](../guide/packaging.md)).
+Packages for the host OS: a macOS `.app`, on Linux **both** a `.deb` and a `.rpm`,
+or on Windows an **Inno Setup installer** (`.exe`) plus a portable `.zip` (see
+[Packaging](../guide/packaging.md)).
 
 - `--skip-build` — reuse the existing binary instead of rebuilding.
-- `--sign` — code-sign the bundle (macOS).
-- `--adhoc` — ad-hoc signature (no certificate; local testing).
+- `--sign` — code-sign the bundle (macOS `codesign`; Windows `signtool`).
+- `--adhoc` — ad-hoc signature (no certificate; local testing, macOS).
 - `--notarize` — notarize + staple (macOS; implies `--sign`).
 - *(Linux needs no signing; `.rpm` deps are auto-detected, `.deb` deps come from
   `[bundle.linux].deb_depends`.)*
+- *(Windows installer needs Inno Setup; falls back to the portable `.zip` if absent.
+  `heimdall doctor` reports the build-time tooling.)*
 
 ### `sign`
 
@@ -111,5 +108,4 @@ the hosted docs instead. Requires [Bun](https://bun.sh).
 Passed as `-define:NAME=true` when building an app directly:
 
 - `HEIMDALL_DEV` — point the webview at `dev_url` (HMR) instead of embedded assets.
-- `HEIMDALL_WEBVIEW` — force the webview/webview backend (native is the default on macOS & Linux).
 - `HEIMDALL_SCHEMA` — schema-dump mode (used by `generate-bindings`).
