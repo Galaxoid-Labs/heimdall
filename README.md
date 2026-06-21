@@ -28,8 +28,9 @@ const { message } = await greeting.greet({ name: "Jake" })
 - **Bring your own frontend.** Your UI is a folder of static files. No bundler,
   framework, or `node_modules` is shipped for you.
 - **One file to ship.** The frontend is baked into the binary at compile time.
-- **A two-way bridge.** JS calls Odin and awaits a result (`invoke`); Odin pushes
-  events to JS (`emit`/`on`). Plain JSON, both directions.
+- **A typed bridge.** Call Odin commands and subscribe to events from JS through a
+  generated, fully-typed client — args, results, and event payloads checked from
+  your Odin types. (Plain JSON underneath; an untyped escape hatch is always there.)
 - **Fast inner loop.** `heimdall dev` rebuilds and relaunches in a blink.
 
 ---
@@ -92,10 +93,10 @@ you register in Odin — that boundary is the whole security model.
 
 ---
 
-## Commands — `invoke`
+## Commands
 
-A **service** is a struct with state; a **command** is a proc over it. The JSON
-marshalling is generated from your types at compile time.
+A **service** is a struct with state; a **command** is a proc over it, callable
+from JS. The JSON marshalling is generated from your types at compile time.
 
 ```odin
 // services.odin
@@ -132,10 +133,10 @@ const { message } = await greeting.greet({ name: "Jake" })   // typed -> "Hello,
 
 ---
 
-## Events — `emit` / `on`
+## Events
 
-For the push direction (progress, background work, live updates). Fire-and-forget,
-safe to emit from any thread.
+The push direction (progress, background work, live updates) — Odin sends data to
+JS without being asked. Fire-and-forget, safe to emit from any thread.
 
 ```odin
 hd.emit(app, "file.progress", Progress{read = 512, total = 1000})

@@ -24,7 +24,7 @@ The web layer **cannot touch the OS** — everything privileged goes through a
 **command** you register in Odin. Keep the frontend trusted; that boundary is the
 security model.
 
-## Commands (request/response) — `invoke`
+## Commands (request/response)
 
 A **service** is a struct holding state; a **command** is a proc over it taking
 and returning JSON-marshalable Odin types. Marshalling is generated at compile
@@ -50,7 +50,7 @@ Returning a non-nil `hd.Error` **rejects** the JS promise. Commands run on the U
 thread; for off-thread work hop back via `hd.dispatch_main` (or just `hd.emit`,
 which is already thread-safe).
 
-## Events (push) — `emit` / `on`
+## Events (push)
 
 ```odin
 Progress :: struct { read, total: int }

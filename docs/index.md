@@ -24,8 +24,8 @@ features:
     details: Your UI is a folder of static files. No bundler, framework, or node_modules shipped for you.
   - title: One file to ship
     details: The frontend is baked into the executable at compile time. A release is a single binary.
-  - title: A two-way bridge
-    details: JS calls Odin and awaits a result (invoke); Odin pushes events to JS (emit / on). Plain JSON.
+  - title: A typed bridge
+    details: Call Odin commands and subscribe to events from JS through a generated, fully-typed client — args, results, and event payloads all checked from your Odin types.
   - title: Fast inner loop
     details: heimdall dev rebuilds and relaunches in a blink — the main reason this is written in Odin.
   - title: Native shell

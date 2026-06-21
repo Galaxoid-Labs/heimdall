@@ -1,8 +1,9 @@
-# Events (`emit` / `on`)
+# Events
 
-`invoke` is request/response. For the **push** direction — progress bars,
-background work, live updates — Odin emits events and JS subscribes. Events are
-fire-and-forget (no return value) and safe to emit from **any thread**.
+The **push** direction — progress bars, background work, live updates. Where
+commands are request/response, events let Odin send data to JS without being
+asked: Odin emits, JS subscribes. Events are fire-and-forget (no return value)
+and safe to emit from **any thread**.
 
 ## Emit from Odin
 

@@ -26,8 +26,10 @@ const { message } = await greeting.greet({ name: "Jake" })
   it as a dependency.
 - **One file to ship.** Your frontend is baked into the binary at compile time. A
   release is a single executable (or a `.app` on macOS).
-- **A simple, two-way bridge.** JS calls Odin and awaits a result (`invoke`); Odin
-  pushes events to JS (`emit`/`on`). Both are plain JSON. That's the whole API.
+- **A typed bridge.** Call Odin commands and subscribe to events from JS through a
+  generated, fully-typed client — args, results, and event payloads all checked
+  from your Odin types. (Plain JSON underneath; an untyped escape hatch is always
+  there.)
 - **Fast inner loop.** `heimdall dev` rebuilds and relaunches quickly — the main
   reason this is written in Odin.
 - **Native shell.** A hand-written native backend per platform — WKWebView on

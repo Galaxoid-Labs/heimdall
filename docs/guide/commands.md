@@ -1,4 +1,4 @@
-# Commands (`invoke`)
+# Commands
 
 Request/response from JS to Odin. A **service** is a struct that holds state; a
 **command** is a proc over it taking and returning JSON-marshalable Odin types.
