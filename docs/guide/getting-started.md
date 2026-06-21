@@ -17,27 +17,70 @@
 Run `heimdall doctor` anytime to check your toolchain and platform dependencies,
 or `heimdall docs` to open this documentation locally in your browser.
 
+## Install heimdall
+
+The installer downloads a prebuilt CLI and the framework into `~/.heimdall` and
+sets `PATH` + `HEIMDALL_HOME` for you.
+
+```sh
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/galaxoid-labs/heimdall/main/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/galaxoid-labs/heimdall/main/install.ps1 | iex
+```
+
+Open a new terminal afterward (or `. ~/.heimdall/env`). Pin a version with
+`HEIMDALL_VERSION=v0.1.0`, change the location with `HEIMDALL_HOME`, or skip the
+profile edits with `HEIMDALL_NO_MODIFY_PATH=1`.
+
+::: details Build from source instead
+The CLI is self-contained (just needs Odin). From a clone of the repo:
+
+```sh
+odin build cli -out:heimdall-cli -o:speed
+install -Dm755 heimdall-cli ~/.local/bin/heimdall
+export HEIMDALL_HOME="$PWD"   # so `new` finds the framework to vendor
+```
+:::
+
 ## Create an app
 
 ```sh
-# 1. Build the heimdall CLI (from the heimdall repo). The root `heimdall/` is the
-#    framework package, so name the binary `heimdall-cli` and put it on PATH.
-odin build cli -out:heimdall-cli -o:speed
-install -Dm755 heimdall-cli ~/.local/bin/heimdall
-
-# 2. Scaffold an app — vendors the framework + a frontend.
-#    HEIMDALL_HOME lets `new` find the framework to vendor (or pass --framework).
-export HEIMDALL_HOME="$PWD"
+# Scaffold — vendors the framework + a frontend into ./myapp
 heimdall new myapp                      # vanilla (default)
 #   heimdall new myapp --frontend sveltekit            # interactive SvelteKit
 #   heimdall new myapp --frontend sveltekit --pm pnpm  # …with a different PM
 
-# 3. Run it — a window opens with a button wired to Odin
+# Run it — a window opens with a button wired to Odin
 cd myapp
 heimdall dev
 ```
 
-Edit your Odin or your frontend and `heimdall dev` reloads.
+Edit your Odin or your frontend and `heimdall dev` reloads. (`heimdall new` finds
+the framework via `HEIMDALL_HOME`, which the installer set; or pass `--framework`.)
+
+## Dev console (web inspector)
+
+Right-click → **Inspect Element** opens the platform web inspector (Safari Web
+Inspector on macOS, WebKitGTK inspector on Linux, Edge DevTools on Windows).
+
+It's controlled by `App_Config.devtools`, a build/config setting (not a runtime
+JS switch):
+
+```odin
+hd.create(hd.App_Config{
+    devtools = .Auto,   // default: on in `heimdall dev`, off in `heimdall build`
+    // devtools = .On,  // force on — even in a release build
+    // devtools = .Off, // force off — even in dev
+})
+```
+
+`.Auto` is the zero value, so you get the inspector during `heimdall dev` and a
+clean release with no extra config. Use `.On` to debug a shipped build, `.Off` to
+lock it down while developing.
 
 ## Choosing a frontend
 

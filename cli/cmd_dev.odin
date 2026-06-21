@@ -99,6 +99,14 @@ free_port :: proc(port: string) {
 	if port == "" {
 		return
 	}
+	// The port is interpolated into `sh -c`; it comes from heimdall.toml's
+	// dev_url, so validate it's purely numeric to avoid shell injection from a
+	// malicious project config.
+	for ch in port {
+		if ch < '0' || ch > '9' {
+			return
+		}
+	}
 	when ODIN_OS != .Windows {
 		_ = run_capture(
 			{"/bin/sh", "-c", fmt.tprintf("lsof -ti tcp:%s | xargs kill 2>/dev/null || true", port)},

@@ -52,7 +52,7 @@ quit :: proc(s: ^State, args: Quit_Args) -> (Quit_Result, hd.Error) {
 }
 
 HTML :: `<!doctype html><html><head><meta charset="utf-8"></head><body>
-<script>window.__HEIMDALL__.invoke("app.quit", {});</script></body></html>`
+<script>window.heimdall.invoke("app.quit", {});</script></body></html>`
 
 main :: proc() {
 	app, err := hd.create(

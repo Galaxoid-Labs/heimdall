@@ -127,7 +127,7 @@ Done since:
 │  WEB LAYER  (user's frontend — any stack)            │
 │    invoke("greeting.greet", {name}) ─postMessage─┐   │
 │    on("file.progress", handler)  ◄──── eval ─────┼─┐ │
-│    window.__HEIMDALL__ client (small JS shim)    │ │ │
+│    window.heimdall client (small JS shim)        │ │ │
 └──────────────────────────────────────────────────┼─┼─┘
                                   request │ JSON    │ │ event
 ┌──────────────────────────────────────────▼────────┼─▼─┐
@@ -167,6 +167,10 @@ App_Config :: struct {
     resizable:    bool,
     dev_url:      string,  // e.g. "http://localhost:5173" — used only in dev builds
     icon:         []u8,    // embedded PNG — macOS Dock + Windows title-bar/taskbar icon
+    assets:       map[string]Asset, // embedded frontend (from `embed`), served over app://
+    menu:         []Menu_Item,      // native menu bar (menu.odin)
+    devtools:     Devtools,         // web inspector: .Auto (dev on/release off) | .On | .Off
+    url_schemes:  []string,         // deep-link schemes, e.g. {"myapp"} (deeplink.odin)
 
     // Initial window state (optional; best-effort per platform — center/always_on_top
     // are no-ops under Wayland). min_width/min_height, maximized, fullscreen,
@@ -178,6 +182,7 @@ App_Config :: struct {
     on_startup:   proc(app: ^App) -> Error, // after webview init, before frontend loads
     on_shutdown:  proc(app: ^App),          // on close; clean up here
     should_quit:  proc(app: ^App) -> bool,  // return false to veto a quit/close
+    on_open_url:  proc(app: ^App, url: string), // deep link opened (also an "open-url" event)
 }
 
 create  :: proc(cfg: App_Config) -> (^App, Error)
@@ -201,10 +206,12 @@ when ODIN_OS == .Linux   { /* WebKitGTK via foreign import C */ }
 when ODIN_OS == .Windows { /* WebView2 via COM vtables */ }
 ```
 
-Keep each backend in its own file (`backend_darwin.odin`, `backend_linux.odin`,
-`backend_windows.odin`) gated by build-tag/`when`, all implementing the same
-small internal vtable: `webview_create`, `webview_navigate`, `webview_eval`,
-`webview_set_title`, `webview_on_message`, `run_loop`, `dispatch_main`.
+Each backend lives in its own `#+build`-gated file (`backend_darwin.odin`,
+`backend_linux.odin`, `backend_windows.odin`), all implementing the same internal
+`Backend` vtable (`backend.odin`): `set_title`, `set_size`, `window_op`,
+`navigate`, `set_html`, `init_js`, `eval`, `reply`, `dispatch`, `run`,
+`terminate`, `destroy`. Two calls flow back in: `backend_on_request` (an inbound
+JS invoke) and the proc handed to `dispatch` (a UI-thread task).
 
 ### Webview backends
 
@@ -295,7 +302,7 @@ main :: proc() {
 ```
 
 **JS side** is a small shim injected before the page loads, exposed as
-`window.__HEIMDALL__` with `invoke` (request/response) and `on` (events):
+`window.heimdall` with `invoke` (request/response) and `on` (events):
 
 ```js
 const msg = await invoke("greeting.greet", { name: "Jake" });
@@ -303,11 +310,11 @@ const msg = await invoke("greeting.greet", { name: "Jake" });
 //   generate an id, stash {resolve,reject} in a pending map,
 //   postMessage({ id, name, args }),
 //   Odin runs the command, then eval()s:
-//     window.__HEIMDALL__._resolve(id, result)  // or _reject(id, errStr)
+//     window.heimdall._resolve(id, result)  // or _reject(id, errStr)
 ```
 
 So the round trip is: `invoke` → postMessage → Odin dispatch → handler →
-`eval("__HEIMDALL__._resolve(id, …)")` → promise resolves. One pending-map, one
+`eval("window.heimdall._resolve(id, …)")` → promise resolves. One pending-map, one
 id counter. That's the entire request/response path.
 
 **Dev vs prod URL.** In a dev build the webview points at `dev_url`
@@ -336,8 +343,7 @@ Document this loudly; it's the easiest thing to get subtly wrong.
 
 `invoke` is request/response. The **event bus** is the push direction — Odin
 emitting to JS without being asked. Use for progress, background-task completion,
-multi-window state sync. (Wails has this; our original design didn't — it's a
-real gap to close.)
+multi-window state sync.
 
 ```odin
 // Odin: emit with any JSON-marshalable payload
@@ -353,10 +359,11 @@ const off = on("file.progress", (p) => updateBar(p.read, p.total));
 
 **Implementation.** `emit` marshals the payload and pushes `{name, payload}` onto
 an event queue. The UI-thread loop drains it and `eval`s
-`__HEIMDALL__._event(name, payload)`, which fans out to registered `on` handlers.
+`window.heimdall._event(name, payload)`, which fans out to registered `on` handlers.
 Same UI-thread rule as the bridge: emitting from a worker thread must hop through
-`dispatch_main`. Events are fire-and-forget — no ack, no return value. (Later: a
-typed event registry so emitted payload types land in the generated `.d.ts`.)
+`dispatch_main`. Events are fire-and-forget — no ack, no return value. Declare a
+payload type with `event(app, name, T)` and it lands typed in the generated
+`.d.ts` (the built-in `menu` / `open-url` events are auto-declared).
 
 ### Binding generation (typed JS) — decided
 
@@ -425,59 +432,42 @@ Keep these as separate, importable modules so a minimal app pays for none of the
 
 A single Odin binary. This is the user's primary touchpoint — make it pleasant.
 
-| Command                         | What it does                                                                 |
-| ------------------------------- | --------------------------------------------------------------------------- |
-| `heimdall new <name>`           | Scaffold a project (`--frontend vanilla\|sveltekit`, `--pm bun\|npm\|pnpm\|yarn\|deno`). Wires the bridge, JS client + typed bindings, example command, vendored framework, CI. |
-| `heimdall dev`                  | Start the frontend dev server (configurable cmd, default `bun run dev`), build the Odin app with `HEIMDALL_DEV=true`, launch pointing at the dev URL. Rebuild + relaunch Odin on change. |
-| `heimdall build`                | Run the frontend build (`npm run build`), `embed` the output, compile Odin `-o:speed`, emit the final binary. Package with `heimdall bundle`. |
-| `heimdall embed <dir> <out>`    | Standalone asset-embed step → generated `.odin`. Composable; `build` calls it. |
-| `heimdall generate-bindings`    | Run the app in schema-dump mode (`core:reflect` over the service registry) and emit `.d.ts` for typed `invoke`/`on`. Optional — untyped `invoke` works without it. |
-| `heimdall bundle`               | Platform packaging: macOS `.app` (sign/notarize), Linux `.deb` + `.rpm`, and Windows Inno Setup installer `.exe` + portable `.zip` (signtool). |
-| `heimdall doctor`               | Check toolchain: `odin` present, `node`/bundler present, platform webview deps (WebKitGTK headers, WebView2 runtime, Xcode CLT). Print actionable fixes. |
+A single Odin binary. Full flag reference: `docs/reference/cli.md`.
 
-`new` flow target: **clone template → `cd` → `npm install` → `heimdall dev` →
-window opens with a working `invoke` round-trip, in under a couple minutes.**
+| Command                      | What it does |
+| ---------------------------- | ------------ |
+| `heimdall new <name>`        | Scaffold a project (`--frontend vanilla\|sveltekit`, `--pm bun\|npm\|pnpm\|yarn\|deno`). Vendors the framework, wires the typed client + example command + CI. |
+| `heimdall dev`               | Start the frontend dev server, build with `HEIMDALL_DEV=true`, launch at the dev URL, rebuild/relaunch on change. |
+| `heimdall build`             | Frontend build → `embed` → compile Odin `-o:speed` → final binary. |
+| `heimdall bundle`            | Package: macOS `.app`, Linux `.deb`/`.rpm`, Windows Inno installer `.exe` + portable `.zip`. `--sign`/`--adhoc`/`--notarize`. |
+| `heimdall sign`              | Code-sign an existing app (macOS codesign/notarize; Windows signtool). |
+| `heimdall embed <dir> <out>` | Standalone asset-embed → generated `.odin`. `build` calls it. |
+| `heimdall generate-bindings` | Schema-dump (`core:reflect` over the registry) → typed `.d.ts` client (commands + events). Optional/additive. |
+| `heimdall docs`              | Serve this documentation locally. |
+| `heimdall doctor`            | Check toolchain: `odin`, `bun`, platform webview deps. Print actionable fixes. |
+
+`new` flow target: **`heimdall new` → `cd` → `heimdall dev` → window opens with a
+working `invoke` round-trip, in under a couple minutes.**
 
 ---
 
 ## Repo layout (the framework)
 
+High level (the maintained file-by-file lives in `docs/internals.md`):
+
 ```
 heimdall/
-  heimdall/                 # the importable library package
-    app.odin                # App, App_Config, lifecycle, create/run/destroy
-    service.odin            # service() + command() registration, registry, thunks
-    bridge.odin             # invoke dispatch, marshalling
-    events.odin             # emit() + event queue; on() handler registry (JS side in shim)
-    bridge_js.odin          # the injected __HEIMDALL__ JS shim (string const)
-    schema.odin             # schema-dump mode: reflect over registry → JSON
-    assets.odin             # Asset type, scheme-handler-facing lookup
-    threading.odin          # dispatch_main + helpers
-    errors.odin             # Error union
-    backend_darwin.odin     # WKWebView (objc interop)
-    backend_linux.odin      # GTK4 + libadwaita + webkitgtk-6.0 (foreign import)
-    backend_windows.odin    # WebView2 (COM)  [last]
-    menu/                   # optional native menus
-    dialog/                 # optional native dialogs
-  cli/                      # the `heimdall` CLI binary
-    main.odin
-    cmd_new.odin
-    cmd_dev.odin
-    cmd_build.odin
-    cmd_embed.odin
-    cmd_generate_bindings.odin
-    cmd_doctor.odin
-    templates/              # embedded starter templates (vanilla/svelte/react)
-  examples/
-    hello/                  # minimal: one service, one command, one button
-    filebrowser/            # dialogs + fs service + progress events + a real-ish UI
-  docs/
-    architecture.md
-    bridge_contract.md      # services, commands, invoke
-    events_guide.md         # emit/on pub-sub patterns
-    binding_generation.md   # schema-dump → .d.ts
-    platform_notes.md       # objc / COM / WebKitGTK gotchas
-  CLAUDE.md                 # this file
+  heimdall/        # the importable library package
+    app.odin service.odin bridge.odin events.odin threading.odin errors.odin
+    backend.odin   # the Backend vtable + inbound-request flow
+    backend_darwin.odin / backend_linux.odin / backend_windows.odin
+    shim.odin assets.odin server.odin schema.odin config.odin
+    window.odin    # window-control API + built-in `win` service
+    menu.odin deeplink.odin
+  cli/             # the `heimdall` CLI (main.odin + cmd_*.odin; self-contained)
+  examples/        # hello + headless _probe* self-tests
+  docs/            # VitePress site (guide/, reference/, internals.md, platform_notes.md)
+  install.sh install.ps1   # one-line installers (pull from GitHub Releases)
 ```
 
 ## Generated user app layout (`heimdall new`)
@@ -492,8 +482,8 @@ myapp/
     package.json
     src/heimdall.gen.{js,d.ts}  # typed client from `generate-bindings` (optional, gitignored)
     src/...
-  heimdall.toml             # optional: title, size, icon, dev/build cmds
-  build.sh                  # one-shot: npm build → heimdall embed → odin build
+  heimdall.toml             # optional: title, size, icon, dev/build cmds, [bundle]/[sign]
+  build.sh                  # one-shot: frontend build → heimdall embed → odin build
 ```
 
 The user's Odin is the **root package** (no `src/` folder — in Odin the directory
@@ -512,26 +502,22 @@ Keep `heimdall.toml` tiny — title, window size, icon path, `dev_cmd`,
 ## Build & toolchain
 
 ```
-odin build cli -out:heimdall-cli -o:speed    # build the CLI (root `heimdall/` is the framework pkg)
-odin run examples/hello                        # run an example directly
-odin test heimdall                             # library tests
+odin build cli -out:heimdall-cli -o:speed   # build the CLI (root `heimdall/` is the framework pkg)
+odin run examples/hello -collection:src=.   # run an example directly
 ```
 
-User app, under the hood of `heimdall build`:
+Examples build with `-collection:src=.` (repo); the headless `examples/_probe*`
+self-tests each write a JSON artifact to `/tmp` — the verification harness.
 
-```
-(cd web && npm run build)                      # → web/dist
-heimdall embed web/dist ./assets_gen.odin
-odin build . -out:myapp -o:speed               # root package
-```
+User app, under the hood of `heimdall build`: `(cd web && bun run build)` →
+`heimdall embed web/dist ./assets_gen.odin` → `odin build . -o:speed`.
 
-Platform link deps (document in `doctor`):
+Platform link deps (checked by `doctor`):
 
-- **Linux:** GTK4 + libadwaita + the GTK4 WebKit port — `webkitgtk-6.0`,
-  `libadwaita-1`, `gtk4` dev packages.
-- **macOS:** link `WebKit`, `Cocoa` frameworks; Xcode command-line tools.
-- **Windows:** WebView2 loader (`WebView2Loader.dll`) + runtime; the Evergreen
-  runtime ships on current Windows but verify in `doctor`.
+- **Linux:** `webkitgtk-6.0`, `libadwaita-1`, `gtk4` dev packages.
+- **macOS:** `WebKit` + `Cocoa` frameworks; Xcode command-line tools.
+- **Windows:** WebView2 runtime (Evergreen ships on current Windows). The loader
+  is vendored static (`heimdall/webview2/`), so no DLL to ship.
 
 ---
 
@@ -556,49 +542,19 @@ Platform link deps (document in `doctor`):
 
 ---
 
-## Roadmap / explicitly out of scope (for now)
+## Roadmap
 
-In scope, later:
+Remaining (none blocking; the live next-step list is the **PICK UP HERE** section
+above):
 
-- Windows/WebView2 backend (after macOS+Linux).
-- Typed **event** payloads in the generated `.d.ts` (commands are covered in MVP;
-  events get typed signatures in a second pass).
-- `bundle`: Windows `.exe` packaging (macOS `.app` + Linux `.deb`/`.rpm` done);
-  AppImage; icons; more code-signing hooks.
-- Auto-updater, multi-window, plugin registry.
+- Deep-link single-instance forwarding on Windows/Linux (macOS done; cold-start
+  works everywhere) — steps in `heimdall/deeplink.odin`.
+- Tray (reuse `tray-odin`) + native dialogs.
+- `.dmg`, AppImage; auto-updater; multi-window.
 
-(Services, the event bus, lifecycle hooks, and `generate-bindings` for commands
-are **MVP**, not deferred — see Status.)
+Out of scope by design (keeps us lightweight): shipping a bundled Node/npm or a
+mandated frontend framework; a `tauri.conf.json`-style mega-config; a native
+plugin marketplace (fork and extend).
 
-Out of scope (by design — keeps us lightweight):
-
-- Shipping a bundled Node/npm or a mandated frontend framework.
-- A `tauri.conf.json`-style mega-config.
-- A native plugin marketplace. People can fork and extend.
-
----
-
-## Decisions (from the Wails review) & remaining open questions
-
-Decided:
-
-1. **Services + invoke namespacing** — commands live under named, stateful
-   services; JS calls `invoke("service.command", args)`. ✅
-2. **Event bus** — `emit` (Odin) / `on` (JS), fire-and-forget, separate from
-   `invoke`. ✅
-3. **Binding generation** — schema-dump mode via `core:reflect`, optional, additive
-   to untyped `invoke`. ✅
-4. **Lifecycle hooks** — `on_startup` / `on_shutdown` / `should_quit` on
-   `App_Config`. ✅
-
-Still open:
-
-5. **Relationship to Bifrost:** clean rewrite, or vendor Bifrost's existing
-   backend abstraction when we reach the native-backend phase?
-6. **Template frontends in `new`:** proposed vanilla (dependency-free, so
-   `doctor`/`dev` works with zero npm) + one Svelte + one React. Confirm the set.
-7. **Typed events:** ship typed event payloads in `.d.ts` for v1, or commands-only
-   first and events in a second pass?
-
-(Backends: all three platforms are native-only — the `webview/webview` bootstrap
-has been removed. See DEVELOPMENT.md for the history.)
+The original design questions (Wails-review decisions, Bifrost relationship,
+template set, typed events) are all **resolved** — see `DECISIONS.md` for the log.

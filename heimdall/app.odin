@@ -29,12 +29,23 @@ App :: struct {
 	server:             ^Asset_Server,
 }
 
+// Devtools controls the web inspector / dev console. `.Auto` (the zero value)
+// enables it in dev builds and disables it in release; `.On`/`.Off` force it
+// regardless of build mode (e.g. `.On` to debug a release binary). This is a
+// build/config setting, not a runtime JS switch.
+Devtools :: enum {
+	Auto = 0,
+	On,
+	Off,
+}
+
 // App_Config is the user-facing configuration passed to `create`. Lifecycle
 // hooks are all optional (nil == skip).
 App_Config :: struct {
 	title:         string,
 	width, height: int,
 	resizable:     bool,
+	devtools:      Devtools,           // web inspector: Auto (dev on/release off), On, or Off
 	dev_url:       string,             // dev builds point the webview here (bundler HMR)
 	icon:          []u8,               // embedded PNG — macOS Dock icon + Windows title-bar/taskbar icon at runtime; Linux/GTK4 has no per-window raw-bytes icon, so installed apps get it from the bundle's .desktop instead
 	assets:        map[string]Asset,   // prod builds serve these (from `embed`)
@@ -99,9 +110,19 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 		return app, nil
 	}
 
-	debug := false
+	// Resolve whether the web inspector / dev console is enabled. Default (Auto):
+	// on in dev builds, off in release. `.On`/`.Off` override regardless of build.
+	// (Backends receive this as their `debug` param, which gates devtools.)
+	devtools := false
 	when HEIMDALL_DEV {
-		debug = true
+		devtools = true
+	}
+	switch cfg.devtools {
+	case .Auto: // keep the dev/release default
+	case .On:
+		devtools = true
+	case .Off:
+		devtools = false
 	}
 
 	// Select the native backend for the host OS: WKWebView (macOS), WebKitGTK
@@ -109,11 +130,11 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 	// bridge / services / events / user code are identical across platforms.
 	ok: bool
 	when ODIN_OS == .Darwin {
-		ok = darwin_backend_create(app, debug)
+		ok = darwin_backend_create(app, devtools)
 	} else when ODIN_OS == .Linux {
-		ok = linux_backend_create(app, debug)
+		ok = linux_backend_create(app, devtools)
 	} else when ODIN_OS == .Windows {
-		ok = windows_backend_create(app, debug)
+		ok = windows_backend_create(app, devtools)
 	} else {
 		#panic("heimdall: no native backend for this platform")
 	}

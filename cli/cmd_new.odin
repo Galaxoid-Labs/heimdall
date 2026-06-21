@@ -452,6 +452,9 @@ main :: proc() {
 		resizable = true,
 		dev_url   = "http://localhost:5173", // used by ` + "`heimdall dev`" + `
 		assets    = ASSETS,                  // embedded by ` + "`heimdall build`" + `
+		// Web inspector (right-click → Inspect Element). Default .Auto = on in
+		// ` + "`heimdall dev`" + `, off in ` + "`heimdall build`" + `. Use .On to force it, .Off to disable.
+		// devtools = .On,
 		icon      = #load("icon.png"),       // window/app icon (macOS dock; bundles use [bundle].icon)
 		// Native menus are OPTIONAL. macOS always shows the standard
 		// App/Edit/Window menus; Linux shows no menu bar unless you add one here.

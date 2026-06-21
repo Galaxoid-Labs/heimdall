@@ -21,7 +21,7 @@ heimdall/
     backend_windows.odin     # native WebView2 backend (COM)
     events.odin              # emit() event bus
     threading.odin           # dispatch_main, terminate
-    shim.odin                # the injected JS client (window.heimdall / __HEIMDALL__)
+    shim.odin                # the injected JS client (window.heimdall)
     schema.odin              # schema-dump mode (reflect -> JSON) for typed bindings
     assets.odin              # Asset type + MIME guessing
     server.odin              # loopback static server (unused fallback seam — see below)
@@ -102,10 +102,13 @@ writes a JSON artifact to `/tmp` — so they're CI-checkable without a human cli
 - `_probe_deeplink` — cold-start URL queue → `win.__ready` → typed `on("open-url")`
   + the `on_open_url` hook
 
-Run one against the platform's backend:
+Plus unit/fuzz tests for the bridge (`heimdall/bridge_test.odin`): ~5,000 random +
+hostile JSON inputs through the real inbound path, asserting it never crashes and
+always replies exactly once.
 
 ```sh
-odin run examples/_probe -collection:src=.
+odin test heimdall                          # bridge fuzz/robustness tests
+odin run examples/_probe -collection:src=.  # a probe against the platform backend
 ```
 
 All probes produce identical artifacts on every platform — same user code,

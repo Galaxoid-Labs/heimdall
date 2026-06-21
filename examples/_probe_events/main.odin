@@ -56,7 +56,7 @@ report :: proc(s: ^Probe, args: Report_Args) -> (Report_Result, hd.Error) {
 HTML :: `
 <!doctype html><html><head><meta charset="utf-8"></head><body>
 <script>
-  var H = window.__HEIMDALL__;
+  var H = window.heimdall;
   var ticks = [];
   H.on("tick", function (p) {
     ticks.push(p.n);

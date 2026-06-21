@@ -30,7 +30,6 @@ package heimdall
 // doctor` checks `pkg-config --exists webkitgtk-6.0`. See docs/platform_notes.md.
 
 import "core:c"
-import "core:encoding/json"
 import "core:strings"
 
 // Substituted into SHIM_JS_NATIVE's __CHANNEL__ (WebKitGTK uses the same
@@ -320,17 +319,9 @@ lin_script_message_cb :: proc "c" (manager: rawptr, value: rawptr, user: rawptr)
 @(private = "file")
 linux_handle_message :: proc(app: ^App, body: string) {
 	context = app.ctx
-	val, jerr := json.parse(transmute([]u8)body, allocator = context.temp_allocator)
-	if jerr != .None {return}
-	obj, ok := val.(json.Object)
+	id_json, req_json, ok := parse_native_message(body)
 	if !ok {return}
-
-	n_bytes, _ := json.marshal(obj["n"], allocator = context.temp_allocator)
-	a_bytes, _ := json.marshal(obj["a"], allocator = context.temp_allocator)
-	i_bytes, _ := json.marshal(obj["i"], allocator = context.temp_allocator)
-
-	req_json := strings.concatenate({"[", string(n_bytes), ",", string(a_bytes), "]"}, context.temp_allocator)
-	id_c := strings.clone_to_cstring(string(i_bytes), context.temp_allocator)
+	id_c := strings.clone_to_cstring(id_json, context.temp_allocator)
 	backend_on_request(app, transmute(Request_Id)id_c, req_json)
 }
 
@@ -703,7 +694,7 @@ lin_eval :: proc(app: ^App, js: string) {
 @(private = "file")
 lin_reply :: proc(app: ^App, id_tok: Request_Id, ok: bool, json_result: string) {
 	id_str := string(transmute(cstring)id_tok)
-	fn := "window.__HEIMDALL__._resolve(" if ok else "window.__HEIMDALL__._reject("
+	fn := "window.heimdall._resolve(" if ok else "window.heimdall._reject("
 	js := strings.concatenate({fn, id_str, ",", json_result, ")"}, context.temp_allocator)
 	lin_eval(app, js)
 }

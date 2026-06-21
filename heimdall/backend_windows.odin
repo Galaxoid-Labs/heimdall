@@ -30,7 +30,6 @@ package heimdall
 // (present on current Win10/11; `heimdall doctor` checks). Ole32/User32/Dwmapi/
 // Advapi32/Shlwapi are pulled in by core:sys/windows + the shlwapi import below.
 
-import "core:encoding/json"
 import "core:mem"
 import "core:strings"
 import win "core:sys/windows"
@@ -1078,17 +1077,9 @@ res_requested_invoke :: proc "system" (this: ^Com_Base, sender: rawptr, args: ra
 @(private = "file")
 windows_handle_message :: proc(app: ^App, body: string) {
 	context = app.ctx
-	val, jerr := json.parse(transmute([]u8)body, allocator = context.temp_allocator)
-	if jerr != .None {return}
-	obj, ok := val.(json.Object)
+	id_json, req_json, ok := parse_native_message(body)
 	if !ok {return}
-
-	n_bytes, _ := json.marshal(obj["n"], allocator = context.temp_allocator)
-	a_bytes, _ := json.marshal(obj["a"], allocator = context.temp_allocator)
-	i_bytes, _ := json.marshal(obj["i"], allocator = context.temp_allocator)
-
-	req_json := strings.concatenate({"[", string(n_bytes), ",", string(a_bytes), "]"}, context.temp_allocator)
-	id_c := strings.clone_to_cstring(string(i_bytes), context.temp_allocator)
+	id_c := strings.clone_to_cstring(id_json, context.temp_allocator)
 	backend_on_request(app, transmute(Request_Id)id_c, req_json)
 }
 
@@ -1413,7 +1404,7 @@ win_eval :: proc(app: ^App, js: string) {
 @(private = "file")
 win_reply :: proc(app: ^App, id_tok: Request_Id, ok: bool, json_result: string) {
 	id_str := string(transmute(cstring)id_tok)
-	fn := "window.__HEIMDALL__._resolve(" if ok else "window.__HEIMDALL__._reject("
+	fn := "window.heimdall._resolve(" if ok else "window.heimdall._reject("
 	js := strings.concatenate({fn, id_str, ",", json_result, ")"}, context.temp_allocator)
 	win_eval(app, js)
 }

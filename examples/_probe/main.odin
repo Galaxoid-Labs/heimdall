@@ -53,7 +53,7 @@ HTML :: `
 <!doctype html><html><head><meta charset="utf-8"></head><body>
 <script>
   (async function () {
-    var H = window.__HEIMDALL__;
+    var H = window.heimdall;
     var greetMsg = "", rejected = "";
     try { var r = await H.invoke("greeting.greet", { name: "Probe" }); greetMsg = r.message; }
     catch (e) { greetMsg = "ERR:" + e; }

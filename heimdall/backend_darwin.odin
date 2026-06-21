@@ -12,7 +12,6 @@ package heimdall
 // string literal — which all of ours are.
 
 import "base:intrinsics"
-import "core:encoding/json"
 import "core:strings"
 import NS "core:sys/darwin/Foundation"
 
@@ -78,7 +77,7 @@ CGRect :: struct {origin: CGPoint, size: CGSize}
 
 NS_UTF8 :: NS.UInteger(4) // NSUTF8StringEncoding
 
-darwin_backend_create :: proc(app: ^App, debug: bool) -> bool {
+darwin_backend_create :: proc(app: ^App, devtools: bool) -> bool {
 	dwn := new(Darwin_Backend, app.registry_allocator)
 	dwn.app = app
 	dwn.width = 800
@@ -137,6 +136,19 @@ darwin_backend_create :: proc(app: ^App, debug: bool) -> bool {
 	dwn.webview = wk
 	msg(nil, oc(win), "setContentView:", wk)
 	msg(nil, oc(win), "center")
+
+	// Web inspector (right-click → "Inspect Element", and the Web Inspector).
+	// `developerExtrasEnabled` is the broadly-supported KVC toggle on WKPreferences;
+	// `setInspectable:` is the modern WKWebView property (macOS 13.3+) — set both,
+	// guarding the new one with respondsToSelector:.
+	if devtools {
+		prefs := msg(id, oc(cfg), "preferences")
+		yes := msg(id, cls("NSNumber"), "numberWithBool:", bool(true))
+		msg(nil, oc(prefs), "setValue:forKey:", yes, nsstring("developerExtrasEnabled"))
+		if msg(bool, oc(wk), "respondsToSelector:", NS.sel_registerName("setInspectable:")) {
+			msg(nil, oc(wk), "setInspectable:", bool(true))
+		}
+	}
 
 	// Same object is the window delegate, so closing the window stops the loop
 	// (and runs should_quit). See window_should_close.
@@ -587,17 +599,9 @@ parse_accelerator :: proc(accel: string) -> (key: string, mask: NS.UInteger) {
 @(private = "file")
 darwin_handle_message :: proc(app: ^App, body: string) {
 	context = app.ctx
-	val, jerr := json.parse(transmute([]u8)body, allocator = context.temp_allocator)
-	if jerr != .None {return}
-	obj, ok := val.(json.Object)
+	id_json, req_json, ok := parse_native_message(body)
 	if !ok {return}
-
-	n_bytes, _ := json.marshal(obj["n"], allocator = context.temp_allocator)
-	a_bytes, _ := json.marshal(obj["a"], allocator = context.temp_allocator)
-	i_bytes, _ := json.marshal(obj["i"], allocator = context.temp_allocator)
-
-	req_json := strings.concatenate({"[", string(n_bytes), ",", string(a_bytes), "]"}, context.temp_allocator)
-	id_c := strings.clone_to_cstring(string(i_bytes), context.temp_allocator)
+	id_c := strings.clone_to_cstring(id_json, context.temp_allocator)
 	backend_on_request(app, transmute(Request_Id)id_c, req_json)
 }
 
@@ -654,7 +658,7 @@ dwn_eval :: proc(app: ^App, js: string) {
 @(private = "file")
 dwn_reply :: proc(app: ^App, id_tok: Request_Id, ok: bool, json_result: string) {
 	id_str := string(transmute(cstring)id_tok)
-	fn := "window.__HEIMDALL__._resolve(" if ok else "window.__HEIMDALL__._reject("
+	fn := "window.heimdall._resolve(" if ok else "window.heimdall._reject("
 	js := strings.concatenate({fn, id_str, ",", json_result, ")"}, context.temp_allocator)
 	dwn_eval(app, js)
 }

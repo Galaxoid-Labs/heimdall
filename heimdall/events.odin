@@ -12,7 +12,7 @@ import "core:strings"
 //   emit(app, "file.progress", Progress{ read = 512, total = 1000 })
 //
 // On the JS side:
-//   const off = __HEIMDALL__.on("file.progress", p => updateBar(p.read, p.total))
+//   const off = heimdall.on("file.progress", p => updateBar(p.read, p.total))
 //
 // TYPED EVENTS (optional). `emit`/`on` accept any name + payload. To get a typed
 // `on()` in the generated `.d.ts`, declare the event's payload type once with
@@ -22,7 +22,7 @@ import "core:strings"
 //   Progress :: struct { read, total: int }
 //   event(app, "file.progress", Progress)   // -> on("file.progress", p => ...) typed
 
-// A queued emit: the fully-rendered `__HEIMDALL__._event(...)` JS call, owned by
+// A queued emit: the fully-rendered `heimdall._event(...)` JS call, owned by
 // `alloc` and freed once it has run on the UI thread.
 @(private)
 Emit_Job :: struct {
@@ -50,9 +50,9 @@ emit :: proc(app: ^App, name: string, payload: $T) -> Error {
 	}
 	defer delete(name_json, alloc)
 
-	// __HEIMDALL__._event(<name>, <payload>)
+	// heimdall._event(<name>, <payload>)
 	js := strings.concatenate(
-		{"window.__HEIMDALL__._event(", string(name_json), ",", string(payload_json), ")"},
+		{"window.heimdall._event(", string(name_json), ",", string(payload_json), ")"},
 		alloc,
 	)
 

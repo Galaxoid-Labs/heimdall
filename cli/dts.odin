@@ -44,7 +44,7 @@ generate_client_js :: proc(schema: Schema, allocator := context.allocator) -> st
 	fmt.sbprintfln(&b, "// heimdall %s", schema.version)
 	fmt.sbprintln(&b)
 	fmt.sbprintln(&b, "function client() {")
-	fmt.sbprintln(&b, "  const h = window.heimdall || window.__HEIMDALL__;")
+	fmt.sbprintln(&b, "  const h = window.heimdall;")
 	fmt.sbprintln(
 		&b,
 		"  if (!h) throw new Error(\"heimdall: bridge not ready — run the app via `heimdall dev` or `heimdall build`\");",

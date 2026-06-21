@@ -722,3 +722,185 @@ the URL; the macOS bundler emits a `plutil`-clean `CFBundleURLTypes` with the
 configured schemes; a fresh scaffold builds. NOT verified headlessly: the full
 LaunchServices `open myapp://` round-trip (needs an OS-registered bundle) and the
 Windows/Linux argv path (those backends build on their own machines).
+
+## D31 — Install scripts (curl|sh / iex) + release workflow
+
+**Decided:** rustup-style one-line install. `install.sh` (macOS+Linux) and
+`install.ps1` (Windows) download a prebuilt CLI + the framework tarball from
+GitHub Releases into `~/.heimdall` (`bin/heimdall`, `heimdall/` framework,
+`env`), and set `PATH` + `HEIMDALL_HOME` (the latter is how `heimdall new` finds
+the framework to vendor). `.github/workflows/release.yml` produces the assets on a
+`v*` tag: CLI built natively per platform (macos-14 arm64, macos-13 x86_64,
+ubuntu x86_64, windows x86_64) + `tar czf heimdall-framework.tar.gz heimdall`.
+
+**Why this shape:** the CLI is self-contained (Odin only, no webview linking) so a
+prebuilt per-OS/arch binary is portable; the framework is pure Odin source (+ the
+vendored Windows webview2 `.lib` that rides inside `heimdall/`), so the tarball is
+just the source dir. curl-downloaded binaries skip macOS Gatekeeper quarantine
+(quarantine is applied by browsers/LaunchServices, not curl), so they run without
+a signing dance — same reason rustup works.
+
+**Knobs:** `HEIMDALL_VERSION` (pin), `HEIMDALL_HOME` (location),
+`HEIMDALL_NO_MODIFY_PATH`, `HEIMDALL_YES` (non-interactive; auto when piped),
+`HEIMDALL_BASE_URL` (mirror/testing override). Interactive confirm only when stdin
+is a TTY. PATH edits are idempotent (grep-guarded).
+
+**Verified (macOS):** built real assets, served via `file://`, ran the installer
+into a throwaway `$HOME`; it placed the CLI + framework, wrote `env`, edited
+`.profile` once (idempotent on re-run); sourcing `env` then `heimdall new` (no
+`--framework`) scaffolded an app that builds. NOT verified here: `install.ps1`
+(no pwsh on this machine — straightforward PowerShell), and the real GitHub
+Releases fetch (no tagged release exists yet — the workflow must run first).
+
+## D32 — `window.heimdall` is canonical; docs lead with the generated client
+
+**Decided:** Two changes to the JS-facing surface, both driven by "we over-document
+raw `invoke` and the screaming-internal global":
+
+1. **`window.heimdall` is now the canonical runtime global** (the shim builds it;
+   Odin evals `window.heimdall._resolve/_reject/_event`). `window.__HEIMDALL__` is
+   kept as a one-line **deprecated back-compat alias** to the same object — free
+   insurance, not the real name, not documented (beyond one "deprecated alias"
+   aside). Switched the eval targets in all three backends + events.odin, the shim,
+   the generated client (`window.heimdall`, dropped the dead `|| __HEIMDALL__`
+   fallback), and every example/probe/template.
+
+2. **Docs lead with the generated typed client** (`import { greeting, on } from
+   "./heimdall.gen.js"`) as the recommended path; `window.heimdall.invoke/on` is
+   presented as the no-build **escape hatch** (collapsed `:::details`), not a
+   co-equal option. Updated commands.md, events.md, README.
+
+**Why:** there were three names for one thing and the docs pushed the
+double-underscore internal one. Generated bindings are the intended DX (typed
+commands + events); raw invoke is the fallback. Keeping `__HEIMDALL__` as an alias
+avoids breaking any old snippet while removing it from the story.
+
+**Verified:** all `_probe*` pass with `window.heimdall` (and would via the alias);
+CLI + docs build clean. Pre-1.0, so the alias can be dropped entirely later.
+
+## D33 — Removed the `window.__HEIMDALL__` alias entirely
+
+**Decided:** Dropped the deprecated `window.__HEIMDALL__` back-compat alias (added
+in D32). `window.heimdall` is now the only runtime global. No users yet, so there's
+nothing to keep compatibility with — supersedes D32's "keep the alias for now."
+
+**Changed:** removed the alias line from `shim.odin`; scrubbed `__HEIMDALL__` from
+CLAUDE.md (mental-model diagram + bridge/event descriptions; also fixed the stale
+`bridge_js.odin` → `shim.odin`), DEVELOPMENT.md, and the docs. The DECISIONS log
+keeps its historical mentions (append-only).
+
+**Verified:** `_probe` + `_probe_events` pass; CLI + docs build clean.
+
+## D34 — Dev console toggle: `App_Config.devtools` (Auto/On/Off)
+
+**Decided:** A config-level toggle for the web inspector, not a runtime JS switch.
+`App_Config.devtools: Devtools` where `Devtools :: enum { Auto, On, Off }`:
+- `.Auto` (zero value) — on in dev builds (`HEIMDALL_DEV`), off in release. Preserves
+  the prior behavior with no config.
+- `.On` / `.Off` — force it regardless of build (e.g. `.On` to debug a release exe).
+
+**Wiring:** `create` resolves the enum + `HEIMDALL_DEV` into a single bool passed
+to each backend's existing devtools param. Linux (`enable_developer_extras`) and
+Windows (`AreDevToolsEnabled`) already gated devtools on that bool, so they were
+left untouched — `.Auto` reproduces their old behavior exactly.
+
+**macOS gap fixed:** the macOS backend previously ignored the flag (no inspector
+even in `heimdall dev`). Now enables it via KVC `developerExtrasEnabled` on
+WKPreferences + `setInspectable:` (macOS 13.3+, guarded by `respondsToSelector:`).
+
+**Verified (macOS):** Auto/release builds (off) and dev/`.On` builds compile; the
+devtools-on path runs without crashing and the bridge still round-trips; fresh
+scaffold builds. Linux/Windows unchanged-by-construction (same bool semantics).
+
+## D35 — Security audit + `free_port` shell-injection fix
+
+**Audited** the bridge/IPC, asset serving, CLI, installers, and deep linking
+(see `SECURITY.md`). One code-level bug found and fixed; one open recommendation.
+
+**Fixed (F1):** `cli/cmd_dev.odin:free_port` interpolated the dev-server port
+(parsed from `heimdall.toml` `dev_url`) into `/bin/sh -c` unvalidated — a malicious
+`heimdall.toml` could run arbitrary commands on `heimdall dev`. Now the port must
+be purely numeric before any shell use.
+
+**Open (F2):** the installers do no checksum/signature verification of the
+downloaded CLI/framework (HTTPS-only). Recommend a `SHA256SUMS` release asset +
+verification, and signing the released CLI.
+
+**Reviewed OK:** reply `eval` can't be injected (id + result are both
+`json.marshal` output → valid JS literals); event payloads + deep-link URLs are
+JSON-encoded; `app://` / loopback serve from the in-memory asset map (no
+filesystem → no path traversal). Inherent-by-design notes (dev_cmd/build_cmd
+execution, `win` service reachable from page scripts, untrusted deep-link input)
+documented in `SECURITY.md`.
+
+Linux/Windows verification checklist for all recent deltas: `DEVELOPMENT.md` →
+"Platform verification".
+
+## D36 — Installer download verification (F2 addressed)
+
+**Done:** `release.yml` now emits a `SHA256SUMS` asset (`sha256sum heimdall-*`
+over the CLI binaries + framework tarball). `install.sh` and `install.ps1`
+download it and verify each file's SHA-256 before installing, aborting on
+mismatch; `HEIMDALL_SKIP_VERIFY=1` opts out (and the `HEIMDALL_BASE_URL` test
+path expects a matching SHA256SUMS).
+
+**Verified (macOS, file://):** happy path verifies + installs; a corrupted asset
+aborts with a checksum-mismatch error and installs nothing; the skip flag bypasses
+with a warning. `install.ps1` (Get-FileHash) not run here — Windows verify.
+
+Still future: signing/notarizing the released CLI binaries (checksums cover
+integrity, not provenance). Closes F2 from D35 / `SECURITY.md`.
+
+## D37 — Bridge fuzz/robustness tests + nesting-guard fix (F3)
+
+**Added** `heimdall/bridge_test.odin` (`odin test heimdall`): drives the real
+`backend_on_request` through a mock backend (per-test capture in
+`backend.impl` — file globals would race the parallel test runner) and asserts
+the inbound path **never crashes and always replies exactly once** for: a hostile
+corpus (malformed/truncated JSON, wrong types, injection + eval-breakout attempts,
+empty/odd command names), deep nesting, and ~5,000 random byte/string inputs.
+
+**Bug found + fixed (F3):** the fuzz deep-nesting case crashed the test (SIGBUS) —
+`core:encoding/json` parses recursively, so deeply-nested request JSON overflows
+the stack (≈4k deep on a small-stack worker thread, ≈100k on the main thread). A
+DoS reachable from a compromised renderer. **Fix:** `parse_request` pre-scans
+(O(n)) and rejects before parsing if the request exceeds 16 MiB or nests past 200
+brackets (string-aware). Verified: all 3 tests pass incl. depth 200,000 (now
+rejected, not crashed); the probe suite still round-trips normally.
+
+**Note:** the failing first run was a *test* bug (shared globals raced the 3-thread
+runner), not a bridge bug — fixed by moving capture into `app.backend.impl`. The
+nesting crash was the genuine finding.
+
+## D38 — More fuzzing: native wire envelope, HTTP parser, MIME; guard-bypass fix
+
+**Extended** `bridge_test.odin` to the other untrusted-input surfaces:
+`parse_native_message` (the `{i,n,a}` wire envelope), `request_path` (the loopback
+HTTP request line — reachable by any local process), and `guess_mime`. ~8k more
+random/hostile inputs; all must reply/return without crashing.
+
+**Bug found + fixed (completes F3):** the native backends parsed the raw wire body
+with `json.parse` inside `*_handle_message` *before* `parse_request`, so the F3
+nesting guard was **bypassed on the real native delivery path** — a deeply-nested
+postMessage still crashed. Extracted a shared, guarded `parse_native_message`
+(applies `within_limits` before parsing) into `bridge.odin` and routed all three
+backends (darwin/linux/windows) through it — also DRYs three byte-identical copies
+and removed their now-dead `core:encoding/json` imports.
+
+**Verified:** 6 tests pass (stable across runs); probes incl. `_probe_deeplink`
+round-trip on the refactored native path; CLI builds. Linux/Windows backends were
+edited identically but compiled only on macOS here — on the platform checklist.
+
+## D39 — Fuzz coverage: deep-link URLs + reject_json (no new bugs)
+
+**Added** two more fuzz tests (now 8 total in `bridge_test.odin`):
+- `test_deeplink_fuzz` — `url_matches_scheme` + `deliver_open_url` queueing on
+  hostile/crafted `myapp://…` URLs (~3k random); never crashes, queues correctly.
+- `test_reject_json_fuzz` — re-parses `reject_json` output as JSON for a hostile
+  corpus + ~3k invalid-UTF-8 inputs; it is always a valid JSON string literal,
+  empirically confirming the reject-path eval can't be injected.
+
+No new findings — both surfaces held up. Stable across runs, zero leaks (test
+runner's memory tracking). The `app://` path normalization is covered by the
+already-fuzzed `request_path`/`has_extension` (the map-lookup makes traversal a
+non-issue).

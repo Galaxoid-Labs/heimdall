@@ -54,22 +54,32 @@ main :: proc() {
 
 ## Call it from JS
 
-The bridge is exposed as `window.heimdall` (and `window.__HEIMDALL__`, kept for
-back-compat). Two ways to call a command:
+**Use the generated typed client** — `heimdall new`/`dev`/`build` keep it in sync
+with your Odin code, so you get autocomplete and typed args + results:
 
 ```js
-// 1) Untyped — quick, no build step:
-const { message } = await window.heimdall.invoke("greeting.greet", { name: "Jake" })
-
-// 2) Typed client (recommended) — generated from your Odin types:
 import { greeting } from "./heimdall.gen.js"
-const { message } = await greeting.greet({ name: "Jake" })   // args + result are typed
+
+const { message } = await greeting.greet({ name: "Jake" })   // typed args + result
 ```
 
-The command name is `"service.command"`. Arguments are an object matching your
-`Args` struct; the resolved value matches your `Result` struct. The typed client
-(see [Typed calls](#typed-calls)) just calls `window.heimdall.invoke` under the
-hood — same wire protocol, nicer DX.
+Each service becomes an object; each command an async method. See
+[Typed calls](#typed-calls) for where the file lives and how it's regenerated.
+
+::: details No build step? Use window.heimdall (the escape hatch)
+The runtime bridge is always available as `window.heimdall`, so you can call
+commands without generating anything — untyped:
+
+```js
+const { message } = await window.heimdall.invoke("greeting.greet", { name: "Jake" })
+```
+
+The typed client just wraps this — same `"service.command"` name, same wire
+protocol, nicer DX.
+:::
+
+The command name is `"service.command"`. Arguments match your `Args` struct; the
+resolved value matches your `Result` struct.
 
 ## Errors
 
@@ -83,7 +93,7 @@ boom :: proc(s: ^Greeting, args: Boom_Args) -> (Boom_Result, hd.Error) {
 ```
 ```js
 try {
-    await window.heimdall.invoke("greeting.boom", {})   // or greeting.boom() via the client
+    await greeting.boom()        // (or window.heimdall.invoke("greeting.boom", {}))
 } catch (e) {
     console.error("rejected:", e)
 }

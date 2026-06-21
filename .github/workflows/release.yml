@@ -1,0 +1,74 @@
+# Builds the heimdall CLI for each platform + the framework tarball and attaches
+# them to a GitHub Release. These are the assets install.sh / install.ps1 pull.
+#
+# Trigger: push a tag like `v0.1.0`  (git tag v0.1.0 && git push --tags)
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the release + upload assets
+
+jobs:
+  cli:
+    name: cli (${{ matrix.asset }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14,      asset: heimdall-darwin-arm64,    out: heimdall }
+          - { os: macos-13,      asset: heimdall-darwin-x86_64,   out: heimdall }
+          - { os: ubuntu-latest, asset: heimdall-linux-x86_64,    out: heimdall }
+          - { os: windows-latest, asset: heimdall-windows-x86_64.exe, out: heimdall.exe }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Odin
+        uses: laytan/setup-odin@v2
+        with:
+          release: dev-2026-06
+      - name: Build CLI
+        run: odin build cli -o:speed -out:${{ matrix.out }}
+      - name: Rename asset
+        shell: bash
+        run: mv ${{ matrix.out }} ${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+          if-no-files-found: error
+
+  framework:
+    name: framework tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The framework is pure Odin source (plus the vendored Windows webview2
+      # static lib, which lives inside heimdall/). Ship the whole dir.
+      - run: tar -czf heimdall-framework.tar.gz heimdall
+      - uses: actions/upload-artifact@v4
+        with:
+          name: heimdall-framework.tar.gz
+          path: heimdall-framework.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: [cli, framework]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true # flatten all artifacts into dist/
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum heimdall-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

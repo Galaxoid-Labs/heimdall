@@ -115,3 +115,40 @@ See `action.yml` for the exact commands.
 - **Windows** — Authenticode signing via `signtool` is stubbed (`heimdall sign`
   has the Windows code path reserved); the WebView2 backend + `.exe` packaging
   are future work.
+
+---
+
+## Releasing heimdall itself
+
+This is about shipping **heimdall** (the framework/CLI), not your app — relevant
+if you maintain a fork.
+
+The installers (`install.sh` / `install.ps1`) download prebuilt assets from a
+GitHub Release: a CLI binary per platform (`heimdall-<os>-<arch>[.exe]`), the
+framework source (`heimdall-framework.tar.gz`), and a `SHA256SUMS` file. Those are
+produced by `.github/workflows/release.yml` on a tag push:
+
+```sh
+git tag v0.1.0
+git push --tags        # builds the CLI on macOS arm64/x86_64, Linux, Windows,
+                       # tars the framework, writes SHA256SUMS, attaches all
+```
+
+The installers verify each download against `SHA256SUMS` before installing and
+abort on a mismatch (`HEIMDALL_SKIP_VERIFY=1` opts out — not recommended).
+
+Until a tagged release exists, the `curl … | sh` one-liners have nothing to fetch.
+For local/mirror testing, point an installer at a base URL holding the assets and
+a matching `SHA256SUMS` (or set `HEIMDALL_SKIP_VERIFY=1`):
+
+```sh
+HEIMDALL_BASE_URL="file:///path/to/assets" HEIMDALL_YES=1 sh install.sh
+```
+
+## Publishing the docs site
+
+The docs deploy via `.github/workflows/docs.yml` (VitePress → GitHub Pages). One
+required setting: **repo Settings → Pages → Source → "GitHub Actions"**. If Source
+is left on "Deploy from a branch", GitHub serves the raw `docs/` markdown through
+Jekyll and the site renders blank. The `base` in `docs/.vitepress/config.ts` must
+match the repo path (`/heimdall/` for `github.io/heimdall/`).

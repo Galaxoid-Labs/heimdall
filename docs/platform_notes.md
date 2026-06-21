@@ -29,7 +29,7 @@ The native message channels (`WKScriptMessage`, WebKitGTK script messages,
 
 1. generate an id, stash `{resolve, reject}` in a pending map,
 2. `postMessage({ id, name, args })`,
-3. have Odin `eval` back `__HEIMDALL__._resolve(id, result)` / `_reject(id, err)`.
+3. have Odin `eval` back `window.heimdall._resolve(id, result)` / `_reject(id, err)`.
 
 This is the id-correlated `SHIM_JS_NATIVE` injected at document-start by every
 backend.
@@ -68,6 +68,12 @@ backend.
   main-frame document (it loads but never runs scripts / fetches subresources).
   `run` navigates native+prod to `app://localhost/index.html` instead of starting
   the loopback server (gated by `Backend.serves_assets`).
+- Dev console (`App_Config.devtools`): enabled via KVC
+  `developerExtrasEnabled` on the config's `WKPreferences` + `setInspectable:`
+  (macOS 13.3+, guarded by `respondsToSelector:`). Linux uses
+  `webkit_settings_set_enable_developer_extras`; Windows
+  `ICoreWebView2Settings.AreDevToolsEnabled`. All three receive the resolved
+  on/off bool from `create` (Auto = on in dev / off in release).
 
 ## Linux — GTK4 + libadwaita + WebKitGTK (`foreign import` C / GObject) — IMPLEMENTED
 

@@ -36,20 +36,28 @@ const { message } = await greeting.greet({ name: "Jake" })
 
 ## Get started
 
-Needs [Odin](https://odin-lang.org/docs/install/) and a JS runtime —
-[Node.js](https://nodejs.org) or [Bun](https://bun.sh) (`heimdall doctor` checks
-your setup).
+Install heimdall (downloads a prebuilt CLI + the framework into `~/.heimdall`):
 
 ```sh
-# Build the CLI. The root `heimdall/` is the framework package, so name the
-# binary `heimdall-cli` and put it on PATH as `heimdall`.
-odin build cli -out:heimdall-cli -o:speed
-install -Dm755 heimdall-cli ~/.local/bin/heimdall
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/galaxoid-labs/heimdall/main/install.sh | sh
+```
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/galaxoid-labs/heimdall/main/install.ps1 | iex
+```
 
-export HEIMDALL_HOME="$PWD"        # lets `new` find the framework to vendor
+Then (open a new terminal first, or `. ~/.heimdall/env`):
+
+```sh
 heimdall new myapp                 # vanilla frontend (or --frontend sveltekit)
 cd myapp && heimdall dev           # a window opens, wired to Odin
 ```
+
+You still need [Odin](https://odin-lang.org/docs/install/) and a JS runtime
+([Node.js](https://nodejs.org) or [Bun](https://bun.sh)) to *build* apps —
+`heimdall doctor` checks everything. Prefer building the CLI from source? See
+[Getting Started](docs/guide/getting-started.md).
 
 Pick a frontend with `--frontend`: `vanilla` (dependency-free, offline) or
 `sveltekit` (runs the official `sv create` — you pick template + TypeScript — and
@@ -106,13 +114,13 @@ hd.run(app)
 ```
 
 ```js
-// Untyped (always available): window.heimdall (alias of window.__HEIMDALL__)
-const r = await window.heimdall.invoke("greeting.greet", { name: "Jake" })
-
-// Typed client (generated from your Odin types; auto-kept-fresh by dev/build):
+// Recommended: the typed client, generated from your Odin types
+// (heimdall new/dev/build keep it fresh):
 import { greeting } from "./heimdall.gen.js"
-const { message } = await greeting.greet({ name: "Jake" })   // -> "Hello, Jake"
+const { message } = await greeting.greet({ name: "Jake" })   // typed -> "Hello, Jake"
 // a command that returns an error rejects the promise
+
+// No build step? window.heimdall.invoke("greeting.greet", { name }) works too (untyped).
 ```
 
 ---

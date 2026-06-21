@@ -39,7 +39,7 @@ report :: proc(s: ^State, r: Report) -> (Report_Result, hd.Error) {
 HTML :: `<!doctype html><html><head><meta charset="utf-8"></head><body>
 <script>
   (async function () {
-    var H = window.__HEIMDALL__;
+    var H = window.heimdall;
     async function call(name, args) {
       try { await H.invoke(name, args || {}); return "ok"; }
       catch (e) { return "ERR:" + e; }

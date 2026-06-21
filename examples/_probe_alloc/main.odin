@@ -40,7 +40,7 @@ quit :: proc(s: ^State, args: Quit_Args) -> (Quit_Result, hd.Error) {
 
 HTML :: `<!doctype html><html><head><meta charset="utf-8"></head><body><script>
 (async function () {
-  var H = window.__HEIMDALL__;
+  var H = window.heimdall;
   for (var i = 0; i < 5; i++) { await H.invoke("svc.greet", { name: "n" + i }); }
   H.invoke("svc.quit", {});
 })();

@@ -1,11 +1,13 @@
 package heimdall
 
-// The JS client injected at document-start before any page loads. Exposes
-// `window.__HEIMDALL__` (alias `window.heimdall`) with:
+// The JS client injected at document-start before any page loads. The canonical
+// global is `window.heimdall`:
 //   invoke(name, args) -> Promise   request/response to an Odin command
 //   on(name, handler)  -> off()     subscribe to events emitted from Odin
 //   _event(name, payload)           internal: called by Odin (eval) to fan out
 //   _resolve/_reject(id, ...)       internal: settle a pending invoke
+// New code should use the generated typed client; `window.heimdall` is the
+// untyped escape hatch.
 //
 // The native message channels (WKScriptMessage / WebKitGTK / WebView2) are one-way
 // postMessage, so `invoke` generates a correlation id, stashes the pending
@@ -15,7 +17,7 @@ package heimdall
 // protocol. No template literals (the Odin literal is backtick-delimited).
 SHIM_JS_NATIVE :: `
 (function () {
-  if (window.__HEIMDALL__) return;
+  if (window.heimdall) return;
 
   var listeners = new Map(); // name -> Set<handler>
   var pending = new Map();   // id -> {resolve, reject}
@@ -58,10 +60,9 @@ SHIM_JS_NATIVE :: `
     });
   }
 
-  window.__HEIMDALL__ = {
+  window.heimdall = {
     invoke: invoke, on: on, _event: _event, _resolve: _resolve, _reject: _reject,
   };
-  window.heimdall = window.__HEIMDALL__; // short, friendly alias
 
   // Tell Odin the frontend is ready once the page's own scripts have run (so
   // on(...) handlers exist), letting it flush any queued events — e.g. a

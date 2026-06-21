@@ -16,8 +16,10 @@ The payload is any JSON-marshalable Odin value.
 
 ## Subscribe in JS
 
+Import `on` from the generated client (same place as your commands):
+
 ```js
-const { on } = window.heimdall          // or: import { on } from "./heimdall.gen.js"
+import { on } from "./heimdall.gen.js"
 
 const off = on("file.progress", p => {
     updateBar(p.read / p.total)
@@ -27,8 +29,9 @@ const off = on("file.progress", p => {
 off()
 ```
 
-(`window.__HEIMDALL__` still works as an alias.) The generated typed client also
-re-exports `on`, so you can import everything from one place.
+Declare the event's payload type and `on` is typed too — see
+[Typed events](#typed-events-optional). No build step? `window.heimdall.on(...)`
+is the untyped escape hatch.
 
 ## From a worker thread
 

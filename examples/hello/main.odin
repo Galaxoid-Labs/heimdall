@@ -29,7 +29,7 @@ HTML :: `
   <p style="color:#888">Try the <b>File</b> / <b>Demo</b> menus (native backend) — clicks show below.</p>
   <div id="menu"></div>
   <script>
-    var H = window.__HEIMDALL__;
+    var H = window.heimdall;
     H.on("menu", function (e) {
       document.getElementById("menu").textContent = "menu: " + e.id;
     });

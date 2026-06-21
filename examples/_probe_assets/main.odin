@@ -48,7 +48,7 @@ INDEX_HTML :: `<!doctype html><html><head><meta charset="utf-8">
 <body><h1>assets</h1></body></html>`
 
 APP_JS :: `(async function () {
-  var H = window.__HEIMDALL__;
+  var H = window.heimdall;
   var msg = "";
   try { var r = await H.invoke("greeting.greet", { name: "Assets" }); msg = r.message; }
   catch (e) { msg = "ERR:" + e; }
