@@ -42,6 +42,9 @@ installs the toolchain, builds the heimdall CLI, and runs `heimdall build` /
 
 ## Use the action
 
+The scaffolded workflow has one job per platform — macOS, Linux, and Windows —
+each calling the action on its native runner:
+
 ```yaml
 # .github/workflows/release.yml   (scaffolded by `heimdall new`)
 name: release
@@ -63,7 +66,25 @@ jobs:
           apple-team-id:       ${{ secrets.APPLE_TEAM_ID }}
           apple-app-password:  ${{ secrets.APPLE_APP_PASSWORD }}
       - uses: actions/upload-artifact@v7
-        with: { name: macos-app, path: "*.app" }
+        with: { name: app-macos, path: "*.app" }
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: OWNER/heimdall@v1          # auto-installs the GTK4/WebKitGTK deps on Linux
+        with: { command: bundle }        # no signing on Linux
+      - uses: actions/upload-artifact@v7
+        with: { name: app-linux, path: "*.deb\n*.rpm" }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: OWNER/heimdall@v1
+        with: { command: bundle }
+      - uses: actions/upload-artifact@v7
+        with: { name: app-windows, path: "dist/windows/*.exe\ndist/windows/*.zip" }
 ```
 
 Unsigned / quick CI: drop the signing inputs, or use `command: bundle --adhoc`
@@ -107,14 +128,19 @@ The action just wraps the standard steps; any CI can do them directly:
 
 See `action.yml` for the exact commands.
 
-## Other platforms
+## Per-platform notes
 
-- **Linux** — no signing step (no OS-level requirement). `heimdall bundle`
-  produces both a `.deb` and a `.rpm` (see [Packaging](./guide/packaging.md));
-  run it on a Linux runner with `dpkg-deb` + `rpmbuild` available.
-- **Windows** — Authenticode signing via `signtool` is stubbed (`heimdall sign`
-  has the Windows code path reserved); the WebView2 backend + `.exe` packaging
-  are future work.
+The scaffolded workflow already runs all three; what differs per platform:
+
+- **macOS** — signed + notarized when the secrets above are set (otherwise drop
+  those inputs for an unsigned/ad-hoc build). Output: `.app`.
+- **Linux** — no signing (no OS-level requirement). The action installs the
+  GTK4/WebKitGTK dev packages on the runner automatically; `heimdall bundle`
+  produces a `.deb` and an `.rpm` (see [Packaging](./guide/packaging.md)).
+- **Windows** — `heimdall bundle` produces an Inno Setup installer `.exe` plus a
+  portable `.zip` (under `dist/windows/`). Authenticode signing via `signtool` is
+  supported by `heimdall sign`; add the cert as a secret and a sign step if you
+  distribute signed installers.
 
 ---
 

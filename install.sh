@@ -160,9 +160,10 @@ if [ "${HEIMDALL_NO_MODIFY_PATH:-0}" != 1 ]; then
   for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
     [ -e "$rc" ] || continue
     if grep -qF "$HEIMDALL_HOME/env" "$rc" 2>/dev/null; then continue; fi  # already wired up
-    # Append, but tolerate an unwritable profile (e.g. one owned by root) instead
-    # of letting `set -e` abort with a raw "Permission denied".
-    if printf '\n%s\n' "$line" >> "$rc" 2>/dev/null; then
+    # Check writability up front: attempting the append on an unwritable profile
+    # (e.g. one owned by root) makes the shell print a raw "Permission denied" for
+    # the redirection itself — which `2>/dev/null` can't suppress — so test first.
+    if [ -w "$rc" ] && printf '\n%s\n' "$line" >> "$rc" 2>/dev/null; then
       added_to="$added_to $rc"
     else
       manual_rc="$manual_rc $rc"
@@ -182,7 +183,7 @@ fi
 
 # --- done ------------------------------------------------------------------
 echo
-say "${GREEN}installed.${RST} heimdall $("$HEIMDALL_HOME/bin/heimdall" version 2>/dev/null || echo '?')"
+say "${GREEN}installed.${RST} $("$HEIMDALL_HOME/bin/heimdall" version 2>/dev/null || echo 'heimdall ?')"
 echo
 if [ -n "$added_to" ]; then
   printf '%s\n' "Open a new terminal (or run ${BOLD}. \"$HEIMDALL_HOME/env\"${RST}), then:"

@@ -55,6 +55,16 @@ runs:
     - name: Install Bun
       uses: oven-sh/setup-bun@v2
 
+    - name: Install Linux webview deps
+      # The native Linux backend links GTK4 + libadwaita + webkitgtk-6.0, so
+      # bundling a Heimdall app on a Linux runner needs their dev packages. No-op
+      # on macOS/Windows runners.
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev
+
     - name: Build heimdall CLI
       shell: bash
       run: |

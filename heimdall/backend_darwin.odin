@@ -130,11 +130,20 @@ darwin_backend_create :: proc(app: ^App, devtools: bool) -> bool {
 	us = msg(id, oc(us), "initWithSource:injectionTime:forMainFrameOnly:", nsstring(shim), NS.UInteger(0), bool(false))
 	msg(nil, oc(dwn.ucc), "addUserScript:", us)
 
-	// WKWebView as the window content view.
+	// WKWebView inside a plain container view — NOT set as the window's
+	// contentView directly. When the Web Inspector is docked, WebKit reparents and
+	// wraps the content view; if that's the raw WKWebView, the title-bar inset is
+	// lost (the traffic lights get covered and stop responding to clicks). Giving
+	// WebKit a container NSView to dock within keeps the title bar intact. The
+	// webview autoresizes to fill the container.
 	wk := msg(id, cls("WKWebView"), "alloc")
 	wk = msg(id, oc(wk), "initWithFrame:configuration:", rect, cfg)
 	dwn.webview = wk
-	msg(nil, oc(win), "setContentView:", wk)
+
+	container := msg(id, oc(msg(id, cls("NSView"), "alloc")), "initWithFrame:", rect)
+	msg(nil, oc(wk), "setAutoresizingMask:", NS.UInteger(NS_VIEW_WIDTH_SIZABLE | NS_VIEW_HEIGHT_SIZABLE))
+	msg(nil, oc(container), "addSubview:", wk)
+	msg(nil, oc(win), "setContentView:", container)
 	msg(nil, oc(win), "center")
 
 	// Web inspector (right-click → "Inspect Element", and the Web Inspector).
@@ -266,6 +275,14 @@ make_message_handler :: proc() -> id {
 			auto_cast application_open_urls,
 			"v@:@@",
 		)
+		// NSApplicationDelegate -applicationShouldHandleReopen:hasVisibleWindows: —
+		// clicking the Dock icon restores a window the user minimized.
+		NS.class_addMethod(
+			cls_h,
+			intrinsics.objc_find_selector("applicationShouldHandleReopen:hasVisibleWindows:"),
+			auto_cast application_should_handle_reopen,
+			"B@:@B",
+		)
 		if proto := NS.objc_getProtocol("WKScriptMessageHandler"); proto != nil {
 			NS.class_addProtocol(cls_h, proto)
 		}
@@ -305,6 +322,26 @@ application_open_urls :: proc "c" (self: id, cmd: NS.SEL, app_: id, urls: id) {
 		s := msg(cstring, oc(msg(id, oc(url), "absoluteString")), "UTF8String")
 		deliver_open_url(dwn.app, string(s))
 	}
+}
+
+// NSApplicationDelegate -applicationShouldHandleReopen:hasVisibleWindows:. Fires
+// when the user clicks the app's Dock icon. AppKit won't auto-restore a
+// custom-managed window, so if ours is miniaturized, deminiaturize it and bring
+// it forward; otherwise just focus it. Returning true keeps AppKit's defaults.
+@(private = "file")
+application_should_handle_reopen :: proc "c" (self: id, cmd: NS.SEL, app_: id, has_visible: bool) -> bool {
+	dwn := g_dwn
+	if dwn == nil {return true}
+	context = dwn.app.ctx
+	win := dwn.window
+	if win != nil {
+		if bool(msg(bool, oc(win), "isMiniaturized")) {
+			msg(nil, oc(win), "deminiaturize:", id(nil))
+		}
+		msg(nil, oc(win), "makeKeyAndOrderFront:", id(nil))
+		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+	}
+	return true
 }
 
 // WKURLSchemeHandler -webView:startURLSchemeTask:. Serves the embedded asset map
@@ -690,6 +727,10 @@ dwn_dispatch_cb :: proc "c" (ctx: rawptr) {
 NS_FULLSCREEN_MASK :: NS.UInteger(1 << 14) // NSWindowStyleMaskFullScreen
 @(private = "file")
 NS_RESIZABLE_MASK :: NS.UInteger(1 << 3) // NSWindowStyleMaskResizable
+@(private = "file")
+NS_VIEW_WIDTH_SIZABLE :: NS.UInteger(1 << 1) // NSViewWidthSizable
+@(private = "file")
+NS_VIEW_HEIGHT_SIZABLE :: NS.UInteger(1 << 4) // NSViewHeightSizable
 
 @(private = "file")
 dwn_window_op :: proc(app: ^App, op: Window_Op) {

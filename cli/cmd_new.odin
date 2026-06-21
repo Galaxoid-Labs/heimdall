@@ -617,9 +617,12 @@ echo "built -> ./app"
 TMPL_WORKFLOW :: `name: release
 on:
   push:
-    tags: ["v*"]
-  workflow_dispatch:
+    tags: ["v*"] # push a v* tag to cut a release
 
+# Builds and bundles __NAME__ for macOS, Linux, and Windows, uploading each
+# platform's installer as a workflow artifact. macOS is signed + notarized when
+# the secrets below are set; Linux needs no signing; Windows is unsigned here
+# (add signtool secrets + a step if you ship signed installers).
 jobs:
   macos:
     runs-on: macos-14
@@ -641,6 +644,40 @@ jobs:
         with:
           name: __NAME__-macos
           path: "*.app"
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build & bundle (.deb + .rpm)
+        uses: OWNER/heimdall@v1   # installs the GTK4/WebKitGTK deps automatically on Linux
+        with:
+          command: bundle
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: __NAME__-linux
+          path: |
+            *.deb
+            *.rpm
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build & bundle (installer + portable zip)
+        uses: OWNER/heimdall@v1
+        with:
+          command: bundle
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: __NAME__-windows
+          path: |
+            dist/windows/*.exe
+            dist/windows/*.zip
 `
 
 // ---- vanilla frontend templates -------------------------------------------
