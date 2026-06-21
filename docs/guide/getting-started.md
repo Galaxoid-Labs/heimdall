@@ -19,11 +19,6 @@ or `heimdall docs` to open this documentation locally in your browser.
 
 ## Install heimdall
 
-::: warning Pre-release
-The prebuilt binaries aren't published yet, so the one-liners below won't fetch
-anything until the first release is out. For now, [build from source](#build-from-source).
-:::
-
 The installer downloads a prebuilt CLI and the framework into `~/.heimdall` and
 sets `PATH` + `HEIMDALL_HOME` for you.
 

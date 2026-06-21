@@ -14,6 +14,7 @@
 #   HEIMDALL_NO_MODIFY_PATH=1   don't touch shell profiles
 #   HEIMDALL_YES=1              non-interactive (assume yes); also auto when piped
 #   HEIMDALL_SKIP_VERIFY=1      skip SHA256 verification of downloads (not recommended)
+#   HEIMDALL_ALLOW_ROOT=1       allow running as root (containers/CI; normally refused)
 set -eu
 
 REPO="galaxoid-labs/heimdall"
@@ -43,6 +44,17 @@ case "$arch" in
   x86_64|amd64)  ARCH=x86_64 ;;
   *) die "unsupported architecture '$arch'" ;;
 esac
+
+# --- refuse to run as root -------------------------------------------------
+# Heimdall installs per-user into ~/.heimdall — root is neither needed nor
+# wanted. Under sudo, files land root-owned and $HOME may point at root's home,
+# which silently breaks the later write to your shell profile. Escape hatch for
+# containers / CI where everything is root by design.
+if [ "$(id -u)" = 0 ] && [ "${HEIMDALL_ALLOW_ROOT:-0}" != 1 ]; then
+  warn "this is a per-user install — it doesn't need sudo or root."
+  warn "running as root writes root-owned files into $HOME and may target the wrong home."
+  die  "re-run without sudo (or set HEIMDALL_ALLOW_ROOT=1 to override)"
+fi
 
 # --- downloader ------------------------------------------------------------
 if need curl; then DL="curl -fsSL -o"; DLO="curl -fsSL"; elif need wget; then DL="wget -qO"; DLO="wget -qO-"; else die "need curl or wget"; fi
@@ -142,20 +154,30 @@ EOF
 ok "env -> $HEIMDALL_HOME/env"
 
 added_to=""
+manual_rc=""
 if [ "${HEIMDALL_NO_MODIFY_PATH:-0}" != 1 ]; then
   line=". \"$HEIMDALL_HOME/env\""
   for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.profile"; do
     [ -e "$rc" ] || continue
-    if ! grep -qF "$HEIMDALL_HOME/env" "$rc" 2>/dev/null; then
-      printf '\n%s\n' "$line" >> "$rc"
+    if grep -qF "$HEIMDALL_HOME/env" "$rc" 2>/dev/null; then continue; fi  # already wired up
+    # Append, but tolerate an unwritable profile (e.g. one owned by root) instead
+    # of letting `set -e` abort with a raw "Permission denied".
+    if printf '\n%s\n' "$line" >> "$rc" 2>/dev/null; then
       added_to="$added_to $rc"
+    else
+      manual_rc="$manual_rc $rc"
     fi
   done
-  # If no rc existed, seed one matching the current shell.
-  if [ -z "$added_to" ] && [ ! -e "$HOME/.zshrc" ] && [ ! -e "$HOME/.bashrc" ] && [ ! -e "$HOME/.profile" ]; then
-    printf '%s\n' "$line" >> "$HOME/.profile"; added_to=" $HOME/.profile"
+  # If no rc existed at all, seed one.
+  if [ -z "$added_to$manual_rc" ] && [ ! -e "$HOME/.zshrc" ] && [ ! -e "$HOME/.bashrc" ] && [ ! -e "$HOME/.profile" ]; then
+    if printf '%s\n' "$line" >> "$HOME/.profile" 2>/dev/null; then added_to=" $HOME/.profile"; else manual_rc=" $HOME/.profile"; fi
   fi
   [ -n "$added_to" ] && ok "PATH set via:$added_to"
+  if [ -n "$manual_rc" ]; then
+    warn "couldn't write to:$manual_rc — likely owned by another user (check: ls -la$manual_rc)."
+    warn "add this line to your shell profile by hand, then restart your shell:"
+    printf '%s\n' "      $line" >&2
+  fi
 fi
 
 # --- done ------------------------------------------------------------------

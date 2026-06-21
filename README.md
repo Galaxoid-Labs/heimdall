@@ -37,10 +37,6 @@ const { message } = await greeting.greet({ name: "Jake" })
 
 ## Get started
 
-> ⚠️ **Pre-release:** prebuilt binaries aren't published yet, so the installers
-> below won't fetch anything until the first release. For now, build the CLI from
-> source — see [Getting Started](docs/guide/getting-started.md#build-from-source).
-
 Install heimdall (downloads a prebuilt CLI + the framework into `~/.heimdall`):
 
 ```sh

@@ -5,8 +5,7 @@
 name: release
 on:
   push:
-    tags: ["v*"]
-  workflow_dispatch:
+    tags: ["v*"] # the only trigger — push a v* tag to cut a release
 
 permissions:
   contents: write # create the release + upload assets
