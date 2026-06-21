@@ -52,7 +52,7 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: OWNER/heimdall@v1          # repo hosting heimdall
         with:
           command: bundle --sign --notarize
@@ -62,7 +62,7 @@ jobs:
           apple-id:            ${{ secrets.APPLE_ID }}
           apple-team-id:       ${{ secrets.APPLE_TEAM_ID }}
           apple-app-password:  ${{ secrets.APPLE_APP_PASSWORD }}
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with: { name: macos-app, path: "*.app" }
 ```
 

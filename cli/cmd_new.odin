@@ -624,7 +624,7 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Build, bundle, sign, notarize
         uses: OWNER/heimdall@v1   # <-- the repo hosting heimdall
@@ -637,7 +637,7 @@ jobs:
           apple-team-id: ` + "${{ secrets.APPLE_TEAM_ID }}" + `
           apple-app-password: ` + "${{ secrets.APPLE_APP_PASSWORD }}" + `
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: __NAME__-macos
           path: "*.app"
