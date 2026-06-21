@@ -165,3 +165,10 @@ deploys to GitHub Pages via `.github/workflows/docs.yml` (enable in repo Setting
 - Odin gotchas that bit us (see `DECISIONS.md`): filename suffixes like `_js` are
   build-target gates; `fmt` treats `{` as a token (don't pass literal braces as a
   format); generated map-literal files need `#+feature dynamic-literals`.
+
+## License
+
+Heimdall is [MIT licensed](https://github.com/galaxoid-labs/heimdall/blob/main/LICENSE)
+(© 2026 Galaxoid Labs); contributions are accepted under the same license.
+Vendored third-party code — e.g. the Microsoft WebView2 loader under
+`heimdall/webview2/` — retains its own license.

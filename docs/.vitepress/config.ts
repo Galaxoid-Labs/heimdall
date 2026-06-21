@@ -71,5 +71,11 @@ export default defineConfig({
     editLink: {
       pattern: 'https://github.com/galaxoid-labs/heimdall/edit/main/docs/:path',
     },
+
+    footer: {
+      message:
+        'Released under the <a href="https://github.com/galaxoid-labs/heimdall/blob/main/LICENSE">MIT License</a>.',
+      copyright: 'Copyright © 2026 Galaxoid Labs',
+    },
   },
 })

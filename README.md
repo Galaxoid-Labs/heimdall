@@ -271,5 +271,13 @@ Full docs live in **[`docs/`](docs/guide/getting-started.md)** (a
 [CLI](docs/reference/cli.md) ·
 [Internals](docs/internals.md).
 
+## License
+
+Heimdall is released under the [MIT License](LICENSE) — © 2026 Galaxoid Labs.
+Use it in open-source or commercial apps; the binaries you build are yours.
+
+Vendored third-party components keep their own licenses — notably the Microsoft
+WebView2 loader under [`heimdall/webview2/`](heimdall/webview2/).
+
 > "Heimdall" is a working name — find/replace `heimdall` / `Heimdall` / `hd` to
 > rename.
