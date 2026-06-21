@@ -66,11 +66,15 @@ installed bundle), so test deep links against an installed/bundled build.
 | | Cold start (app not running) | Already running |
 | --- | --- | --- |
 | **macOS** | ✅ `application:openURLs:` | ✅ same — LaunchServices reuses the instance |
-| **Linux** | ✅ URL via argv | ⏳ needs single-instance forwarding |
+| **Linux** | ✅ URL via argv | ✅ single-instance forwarding (AF_UNIX socket) |
 | **Windows** | ✅ URL via argv | ⏳ needs single-instance forwarding |
 
-macOS works fully. On Linux/Windows, **cold start works today**; the
-"already-running" case (forwarding the URL to the live instance instead of
-launching a second one) needs single-instance IPC and is not yet implemented —
-see [internals](../internals.md). Until then, a second launch with a URL on
-those platforms starts a new instance that receives the URL via argv.
+macOS and Linux work fully. On **Linux**, when `url_schemes` is set the app is
+single-instance: opening `myapp://…` while it's already running forwards the URL
+to the live window (no second window) — the first instance listens on an
+AF_UNIX socket in `$XDG_RUNTIME_DIR`, a later launch hands it the URL and exits.
+On **Windows**, **cold start works today**, but the "already-running" case
+(forwarding the URL to the live instance instead of launching a second one) still
+needs single-instance IPC — see [internals](../internals.md). Until then, a
+second launch with a URL on Windows starts a new instance that receives the URL
+via argv.

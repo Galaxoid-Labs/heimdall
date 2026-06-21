@@ -13,9 +13,9 @@ import "core:strings"
 //   2. DELIVERY — getting the URL into the running app. macOS receives it via
 //      `application:openURLs:` (cold-start AND already-running, single-instance
 //      free). Windows and Linux receive a cold-start URL as a command-line
-//      argument (argv). The already-running case on Windows/Linux needs
-//      single-instance forwarding (mutex+WM_COPYDATA / D-Bus) — NOT yet
-//      implemented; see docs/guide/deep-linking.md.
+//      argument (argv). The already-running case: Linux is DONE (single-instance
+//      forwarding over an AF_UNIX socket — see backend_linux.odin); Windows still
+//      spawns a second instance. See docs/guide/deep-linking.md.
 //
 // The app sees a URL two ways (set either or both on App_Config):
 //   * on_open_url(app, url) — an Odin hook, called immediately.
@@ -25,44 +25,33 @@ import "core:strings"
 // it in sync with `[bundle].schemes` (which does the OS registration).
 //
 // ───────────────────────────────────────────────────────────────────────────
-// TODO — Windows/Linux "already-running" single-instance forwarding (NEXT)
+// Single-instance "already-running" forwarding — Linux DONE, Windows TODO
 // ───────────────────────────────────────────────────────────────────────────
-// Today, on Win/Linux, opening myapp://… while the app is ALREADY running starts
-// a SECOND instance (which gets the URL via argv and delivers it correctly, but
-// you now have two windows). macOS is unaffected (LaunchServices reuses the live
-// instance). To make Win/Linux behave like macOS, add single-instance + forward:
+// macOS reuses the live instance for free (LaunchServices). Linux now matches it
+// via single-instance forwarding in backend_linux.odin (an AF_UNIX socket in
+// $XDG_RUNTIME_DIR named after the app id: the first instance listens; a later
+// one connects, writes its launch URL, and exits — the primary focuses its
+// window and delivers the URL). Only engaged when App_Config.url_schemes is set.
 //
-//   Shared shape (do this in app.odin `create`, before the backend opens a window):
-//     1. Try to become the "primary" instance (platform lock below).
-//     2. If we ARE primary: keep a listener open for incoming URLs; when one
-//        arrives from a secondary, call `deliver_open_url(app, url)` (already the
-//        single entry point — it fires the hook + queues/emits the event).
-//     3. If we are NOT primary: a primary already exists — send our launch URL
-//        (from os.args, via url_matches_scheme) to it over the channel, then
-//        EXIT immediately (os.exit(0)) without opening a window.
+// Windows still spawns a SECOND instance (which gets the URL via argv and
+// delivers it correctly, but you now have two windows). To finish Windows,
+// mirror the same shape in backend_windows.odin:
 //
-//   Windows (backend_windows.odin):
-//     * CreateMutexW("Global\\heimdall-<bundle_id>") → GetLastError ==
-//       ERROR_ALREADY_EXISTS means a primary is running.
-//     * Forward: FindWindow for the primary's hidden message window (or a known
-//       class/title) and SendMessageW WM_COPYDATA with the URL bytes.
-//     * Receive: handle WM_COPYDATA in the existing wndproc → UTF-8 → dispatch to
-//       the UI thread → deliver_open_url. (Already-have a wndproc + dispatch.)
-//
-//   Linux (backend_linux.odin):
-//     * Simplest: GApplication with G_APPLICATION_HANDLES_OPEN +
-//       g_application_register/g_application_get_is_remote; the "open" signal on
-//       the primary delivers the URLs, g_application_run on a remote forwards over
-//       D-Bus and returns. BUT our loop is hand-rolled (not g_application_run), so
-//       either (a) adopt GApplication's registration just for uniqueness/open
-//       forwarding while keeping our g_main_context_iteration loop, or (b) a
-//       lockfile in $XDG_RUNTIME_DIR + a unix-domain socket: primary listens,
-//       secondary connects, writes the URL, exits.
+//     1. Try to become the "primary" instance:
+//        CreateMutexW("Global\\heimdall-<app_id>") → GetLastError ==
+//        ERROR_ALREADY_EXISTS means a primary is running.
+//     2. If primary: receive forwarded URLs via WM_COPYDATA in the existing
+//        wndproc → UTF-8 → dispatch to the UI thread → deliver_open_url.
+//     3. If NOT primary: FindWindow for the primary's window and SendMessageW
+//        WM_COPYDATA with the launch URL bytes (from os.args, via
+//        url_matches_scheme), then os.exit(0) without opening a window.
 //
 //   Verify with a real bundled/installed build (scheme must be OS-registered):
 //   launch the app, then `start myapp://x` (Win) / `xdg-open myapp://x` (Linux)
 //   → the SAME window receives "open-url", no second instance. (Cold-start +
-//   the macOS path are already covered by examples/_probe_deeplink.)
+//   the macOS path are covered by examples/_probe_deeplink; the Linux
+//   already-running path was verified end-to-end with a primary + forwarded
+//   secondaries.)
 
 // Payload of the "open-url" event. Auto-declared in `create` so it's typed in
 // generated bindings.

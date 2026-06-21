@@ -143,8 +143,9 @@ join2 :: proc(a, b: string, allocator: runtime.Allocator) -> string {
 }
 
 // The app id used to namespace dirs: App_Config.app_id, else a sanitized title,
-// else "heimdall-app".
-@(private = "file")
+// else "heimdall-app". Package-private — also used by the Linux single-instance
+// lock (backend_linux.odin) so the socket name matches the app's data dirs.
+@(private)
 app_identifier :: proc(app: ^App, allocator: runtime.Allocator) -> string {
 	id := app.cfg.app_id
 	if strings.trim_space(id) == "" {id = app.cfg.title}

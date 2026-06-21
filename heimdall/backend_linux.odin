@@ -30,7 +30,9 @@ package heimdall
 // doctor` checks `pkg-config --exists webkitgtk-6.0`. See docs/platform_notes.md.
 
 import "core:c"
+import "core:os"
 import "core:strings"
+import "core:sys/posix"
 
 // Substituted into SHIM_JS_NATIVE's __CHANNEL__ (WebKitGTK uses the same
 // messageHandlers API as Cocoa's WKScriptMessageHandler).
@@ -59,6 +61,12 @@ INJECT_AT_DOCUMENT_START :: c.int(0)
 // GSourceFunc return: G_SOURCE_REMOVE (FALSE) runs the idle callback once.
 @(private = "file")
 G_SOURCE_REMOVE :: c.int(0)
+// G_SOURCE_CONTINUE (TRUE) keeps a GSource (e.g. the single-instance fd watch).
+@(private = "file")
+G_SOURCE_CONTINUE :: c.int(1)
+// GIOCondition G_IO_IN — data available to read on a watched fd.
+@(private = "file")
+G_IO_IN :: c.int(1)
 
 // Callbacks crossing the FFI boundary — all `proc "c"`.
 @(private = "file")
@@ -67,6 +75,10 @@ Script_Message_CB :: #type proc "c" (manager: rawptr, value: rawptr, user: rawpt
 Source_Func :: #type proc "c" (user: rawptr) -> c.int
 @(private = "file")
 Uri_Scheme_CB :: #type proc "c" (request: rawptr, user: rawptr)
+// GUnixFDSourceFunc: (fd, GIOCondition, user) -> keep-source bool. Used to service
+// the single-instance listening socket on the GLib main loop.
+@(private = "file")
+Unix_FD_CB :: #type proc "c" (fd: c.int, condition: c.int, user: rawptr) -> c.int
 
 @(default_calling_convention = "c")
 foreign gtk {
@@ -110,6 +122,8 @@ foreign gtk {
 	// GLib main loop + utilities
 	g_main_context_iteration :: proc(ctx: rawptr, may_block: c.int) -> c.int ---
 	g_idle_add :: proc(function: Source_Func, data: rawptr) -> c.uint ---
+	// glib-unix: watch a raw fd on the default main context (single-instance socket).
+	g_unix_fd_add :: proc(fd: c.int, condition: c.int, function: Unix_FD_CB, user_data: rawptr) -> c.uint ---
 	g_free :: proc(mem: rawptr) ---
 	g_quark_from_static_string :: proc(s: cstring) -> u32 ---
 	g_error_new_literal :: proc(domain: u32, code: c.int, message: cstring) -> rawptr ---
@@ -174,6 +188,12 @@ Linux_Backend :: struct {
 	actions:   rawptr, // GSimpleActionGroup* (menu actions)
 	shortcuts: rawptr, // GtkShortcutController* (menu accelerators)
 	running:   bool,
+
+	// Single-instance deep-link forwarding (only when url_schemes is set):
+	// the primary listens on this AF_UNIX socket; secondaries connect, write
+	// their launch URL, and exit. -1 when not the primary / not enabled.
+	lock_fd:   posix.FD,
+	lock_path: string, // owned by registry_allocator; unlinked at destroy
 }
 
 // Single app per process — the C trampolines reach the app through this.
@@ -193,7 +213,15 @@ linux_backend_create :: proc(app: ^App, debug: bool) -> bool {
 
 	lin := new(Linux_Backend, app.registry_allocator)
 	lin.app = app
+	lin.lock_fd = -1
 	g_lin = lin
+
+	// Single-instance deep-link forwarding (parity with macOS LaunchServices): if a
+	// primary instance is already running, hand it our launch URL and exit before
+	// opening a second window. Only engaged when the app declares url_schemes.
+	if !lin_single_instance(lin) {
+		os.exit(0)
+	}
 
 	lin.window = gtk_window_new()
 	gtk_window_set_default_size(lin.window, 800, 600)
@@ -295,6 +323,131 @@ linux_has_ext :: proc(path: string) -> bool {
 	slash := strings.last_index_byte(path, '/')
 	dot := strings.last_index_byte(path, '.')
 	return dot > slash
+}
+
+// ---- single-instance deep-link forwarding ---------------------------------
+//
+// Windows/Linux deliver a deep link as a launch argument, so opening myapp://…
+// while the app already runs would otherwise spawn a SECOND window. macOS gets
+// single-instance free from LaunchServices; here we reproduce it with an AF_UNIX
+// socket in $XDG_RUNTIME_DIR named after the app id:
+//
+//   * The first instance binds + listens, and services connections on the GLib
+//     main loop (g_unix_fd_add) — it is the primary.
+//   * A later instance connects, writes its launch URL (if any), and exits; the
+//     primary reads it, focuses its window, and delivers the URL like any other
+//     open-url. A re-launch with no URL just focuses the existing window.
+//
+// Only engaged when the app declares url_schemes (deep links are the whole point
+// of single-instance here). Returns false when this process is a secondary that
+// has forwarded and should exit.
+
+// Build "$XDG_RUNTIME_DIR/heimdall-<app_id>.sock" (falls back to /tmp), cloned
+// into registry_allocator so it outlives temp frames (unlinked at destroy).
+@(private = "file")
+lin_lock_path :: proc(app: ^App) -> string {
+	id := app_identifier(app, context.temp_allocator)
+	base := "/tmp"
+	if dir := getenv("XDG_RUNTIME_DIR"); dir != nil {
+		if s := string(dir); s != "" {base = s}
+	}
+	path := strings.concatenate({base, "/heimdall-", id, ".sock"}, context.temp_allocator)
+	return strings.clone(path, app.registry_allocator)
+}
+
+// Fill an AF_UNIX sockaddr for `path`. Returns the address and the length to pass
+// to bind/connect (the full struct — the kernel reads sun_path as nul-terminated).
+@(private = "file")
+lin_sock_addr :: proc(path: string) -> (posix.sockaddr_un, posix.socklen_t) {
+	addr: posix.sockaddr_un // zero-initialized → sun_path is nul-padded
+	addr.sun_family = .UNIX
+	n := min(len(path), len(addr.sun_path) - 1)
+	for i in 0 ..< n {
+		addr.sun_path[i] = c.char(path[i])
+	}
+	return addr, posix.socklen_t(size_of(posix.sockaddr_un))
+}
+
+// This process's launch deep-link URL (first argv entry matching a scheme), or "".
+@(private = "file")
+lin_launch_url :: proc(app: ^App) -> string {
+	if len(os.args) < 2 {return ""}
+	for arg in os.args[1:] {
+		if url_matches_scheme(app, arg) {return arg}
+	}
+	return ""
+}
+
+@(private = "file")
+lin_single_instance :: proc(lin: ^Linux_Backend) -> (primary: bool) {
+	app := lin.app
+	if len(app.cfg.url_schemes) == 0 {
+		return true // no deep-link schemes → single-instance not needed
+	}
+	lin.lock_path = lin_lock_path(app)
+	addr, addr_len := lin_sock_addr(lin.lock_path)
+
+	// 1) Probe for a live primary by trying to connect.
+	if cfd := posix.socket(.UNIX, .STREAM); cfd >= 0 {
+		if posix.connect(cfd, cast(^posix.sockaddr)&addr, addr_len) == .OK {
+			// A primary is alive — forward our launch URL (if any) and become a
+			// no-op secondary. The primary focuses its window on receipt.
+			if url := lin_launch_url(app); url != "" {
+				buf := transmute([]byte)url
+				posix.write(cfd, raw_data(buf), c.size_t(len(buf)))
+			}
+			posix.close(cfd)
+			return false
+		}
+		posix.close(cfd)
+	}
+
+	// 2) No live primary. Clear any stale socket file, then bind + listen.
+	path_c := strings.clone_to_cstring(lin.lock_path, context.temp_allocator)
+	posix.unlink(path_c)
+	lfd := posix.socket(.UNIX, .STREAM)
+	if lfd < 0 {return true} // can't single-instance; just run normally
+	if posix.bind(lfd, cast(^posix.sockaddr)&addr, addr_len) != .OK {
+		posix.close(lfd)
+		return true
+	}
+	if posix.listen(lfd, 4) != .OK {
+		posix.close(lfd)
+		posix.unlink(path_c)
+		return true
+	}
+	lin.lock_fd = lfd
+	g_unix_fd_add(c.int(lfd), G_IO_IN, lin_accept_cb, lin) // serviced by the run loop
+	return true
+}
+
+// A secondary connected. Accept, read its forwarded URL, focus our window, and
+// deliver the URL through the normal open-url path. Keeps the watch alive.
+@(private = "file")
+lin_accept_cb :: proc "c" (fd: c.int, condition: c.int, user: rawptr) -> c.int {
+	lin := g_lin
+	if lin == nil {return G_SOURCE_REMOVE}
+	context = lin.app.ctx
+	defer free_all(context.temp_allocator)
+
+	cfd := posix.accept(posix.FD(fd), nil, nil)
+	if cfd < 0 {return G_SOURCE_CONTINUE}
+	buf: [4096]byte
+	total := 0
+	for total < len(buf) {
+		n := posix.read(cfd, raw_data(buf[total:]), c.size_t(len(buf) - total))
+		if n <= 0 {break}
+		total += int(n)
+	}
+	posix.close(cfd)
+
+	// Bring the existing window forward (macOS-like re-activation), then deliver.
+	gtk_window_present(lin.window)
+	gtk_widget_grab_focus(lin.webview)
+	if total > 0 {
+		deliver_open_url(lin.app, string(buf[:total]))
+	}
+	return G_SOURCE_CONTINUE
 }
 
 // ---- C trampolines --------------------------------------------------------
@@ -730,5 +883,13 @@ lin_stop :: proc(app: ^App, user: rawptr) {
 lin_destroy :: proc(app: ^App) {
 	lin := self_lin(app)
 	lin.running = false
+	// Release the single-instance lock: close the listening socket and remove its
+	// file so the next launch can become primary.
+	if lin.lock_fd >= 0 {
+		posix.close(lin.lock_fd)
+		if lin.lock_path != "" {
+			posix.unlink(strings.clone_to_cstring(lin.lock_path, context.temp_allocator))
+		}
+	}
 	free(lin, app.registry_allocator)
 }

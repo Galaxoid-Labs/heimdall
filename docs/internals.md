@@ -89,7 +89,7 @@ of them use it.
 | Native menus (custom + role + custom-event items; macOS adds App/Edit/Window) | ✅ macOS + Linux + Windows |
 | macOS `.app` bundling + code signing + notarization | ✅ (notarization needs a real Apple account to exercise) |
 | Windows installer (Inno Setup `.exe`) + portable `.zip` + `signtool` signing | ✅ |
-| Deep linking (`myapp://`) — registration + delivery | ✅ macOS full; Win/Linux cold-start (single-instance forwarding ⏳) |
+| Deep linking (`myapp://`) — registration + delivery | ✅ macOS + Linux full (single-instance forwarding); Windows cold-start only (already-running forwarding ⏳) |
 | `.dmg`, AppImage, tray, native dialogs | ⏳ future |
 
 ## How verification works

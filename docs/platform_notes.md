@@ -236,10 +236,20 @@ How a `myapp://…` URL reaches the running app (see the
   free. macOS skips argv parsing.
 - **Windows / Linux delivery:** the URL arrives as a command-line argument
   (`%1` / `%u`). `deliver_launch_url` (deeplink.odin) scans `os.args` for a
-  `<scheme>://` arg at startup. The **already-running** case needs single-instance
-  forwarding (Windows: named mutex + `WM_COPYDATA`; Linux: D-Bus or a lockfile +
-  socket) to hand the URL to the live instance — NOT yet implemented; a second
-  launch currently starts a new instance that gets the URL via argv.
+  `<scheme>://` arg at startup.
+- **Linux already-running (single-instance):** `backend_linux.odin` reproduces
+  the macOS "reuse the live instance" behavior with an **AF_UNIX socket** at
+  `$XDG_RUNTIME_DIR/heimdall-<app_id>.sock`. The first instance binds + listens
+  and services connections on the GLib main loop (`g_unix_fd_add`); a later
+  launch connects, writes its launch URL, and `os.exit(0)`s — the primary reads
+  it, focuses its window, and calls `deliver_open_url`. A re-launch with no URL
+  just focuses the existing window. A stale socket (after a crash) is detected
+  (connect refused) and replaced. Only engaged when `App_Config.url_schemes` is
+  set; the socket is unlinked on clean shutdown.
+- **Windows already-running:** still spawns a second instance (which delivers the
+  URL via argv correctly, but you get two windows). The same single-instance
+  shape — named mutex + `WM_COPYDATA` forwarding — is the remaining work; see the
+  TODO in `deeplink.odin`.
 - **Frontend timing:** a cold-start URL is known before the page exists, so the
   `open-url` event is queued and flushed when the shim calls the reserved
   `win.__ready` command on `DOMContentLoaded` (after the app's `on(...)` handlers
