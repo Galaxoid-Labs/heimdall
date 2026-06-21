@@ -5,7 +5,7 @@ import "core:os"
 import "core:strings"
 
 // Hosted docs, used as a fallback when no local docs source is found.
-DOCS_URL :: "https://ismyhc.github.io/heimdall/"
+DOCS_URL :: "https://galaxoid-labs.github.io/heimdall/"
 
 // `heimdall docs [--build] [--port N] [--no-open]`
 // Serve the documentation site locally in your browser.

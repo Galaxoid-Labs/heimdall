@@ -107,8 +107,11 @@ object per service:
 import { greeting, on } from "./heimdall.gen.js"
 
 const { message } = await greeting.greet({ name: "Jake" })  // typed args + result
-const off = on("file.progress", p => updateBar(p))          // events too
+const off = on("greeting.tick", t => updateCount(t.count))  // typed event payload
 ```
+
+Events are typed too when you declare their payload with `hd.event(...)` — see
+[Events → Typed events](./events.md#typed-events-optional).
 
 `heimdall dev` and `heimdall build` regenerate it automatically (it's also created
 by `heimdall new`), so it stays in sync with your Odin code. It's optional and

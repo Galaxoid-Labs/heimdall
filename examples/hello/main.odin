@@ -96,6 +96,9 @@ main :: proc() {
 	hd.command(g, "greet", greet)
 	hd.command(g, "boom", boom)
 
+	// Declare a typed event so generate-bindings types on("greeting.tick", ...).
+	hd.event(app, "greeting.tick", Tick)
+
 	hd.set_html(app, HTML)
 	hd.run(app)
 }

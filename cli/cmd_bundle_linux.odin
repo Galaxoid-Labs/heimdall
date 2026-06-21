@@ -91,10 +91,25 @@ desktop_entry :: proc(p: Project, display, summary: string) -> string {
 	fmt.sbprintln(&b, "Type=Application")
 	fmt.sbprintfln(&b, "Name=%s", display)
 	fmt.sbprintfln(&b, "Comment=%s", summary)
-	fmt.sbprintfln(&b, "Exec=%s", p.name)
+	// `%u` passes a deep-link URL as argv when launched via x-scheme-handler.
+	if len(p.schemes) > 0 {
+		fmt.sbprintfln(&b, "Exec=%s %%u", p.name)
+	} else {
+		fmt.sbprintfln(&b, "Exec=%s", p.name)
+	}
 	fmt.sbprintfln(&b, "Icon=%s", p.bundle_id if p.bundle_id != "" else p.name)
 	fmt.sbprintln(&b, "Terminal=false")
 	fmt.sbprintfln(&b, "Categories=%s", cats)
+	// Deep linking: declare the URL schemes this app handles so the desktop
+	// environment routes myapp://… here. (update-desktop-database, run by the
+	// package's post-install, builds the scheme->app map.)
+	if len(p.schemes) > 0 {
+		strings.write_string(&b, "MimeType=")
+		for s in p.schemes {
+			fmt.sbprintf(&b, "x-scheme-handler/%s;", s)
+		}
+		strings.write_byte(&b, '\n')
+	}
 	return strings.to_string(b)
 }
 

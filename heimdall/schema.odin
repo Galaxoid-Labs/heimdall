@@ -8,10 +8,10 @@ import "core:reflect"
 import "core:strings"
 
 // Schema-dump mode (Phase 6). With `-define:HEIMDALL_SCHEMA=true`, `run` does NOT
-// open a window: it walks the populated command registry, introspects each
-// command's Args/Result types via core:reflect, prints a JSON schema to stdout,
-// and exits. `heimdall generate-bindings` runs the app this way and turns the
-// JSON into a typed `.d.ts`.
+// open a window: it walks the populated command registry AND the declared-event
+// registry, introspects each command's Args/Result and each event's payload type
+// via core:reflect, prints a JSON schema to stdout, and exits. `heimdall
+// generate-bindings` runs the app this way and turns the JSON into a typed client.
 //
 // This works because the same RTTI core:encoding/json uses to (un)marshal is the
 // single source of truth for the types we document — no chicken-and-egg, no
@@ -21,6 +21,7 @@ import "core:strings"
 Schema :: struct {
 	version:  string,
 	services: []Schema_Service,
+	events:   []Schema_Event,
 }
 Schema_Service :: struct {
 	name:     string,
@@ -30,6 +31,10 @@ Schema_Command :: struct {
 	name:   string,
 	args:   []Schema_Field,
 	result: []Schema_Field,
+}
+Schema_Event :: struct {
+	name:    string,
+	payload: []Schema_Field, // fields of the declared payload type
 }
 Schema_Field :: struct {
 	name: string,
@@ -48,6 +53,11 @@ dump_schema :: proc(app: ^App) {
 
 	for key, thunk in app.registry {
 		svc_name, cmd_name := split_command_key(key)
+		// Skip reserved/internal commands (e.g. win.__ready) — they aren't part
+		// of the public typed API.
+		if strings.has_prefix(cmd_name, "_") {
+			continue
+		}
 		cmds, ok := &by_service[svc_name]
 		if !ok {
 			by_service[svc_name] = make([dynamic]Schema_Command, alloc)
@@ -68,9 +78,16 @@ dump_schema :: proc(app: ^App) {
 		append(&services, Schema_Service{name = name, commands = cmds[:]})
 	}
 
+	// Declared events (name -> payload type), for typed `on()`.
+	events := make([dynamic]Schema_Event, alloc)
+	for name, payload_type in app.events {
+		append(&events, Schema_Event{name = name, payload = fields_of(payload_type, alloc)})
+	}
+
 	schema := Schema {
 		version  = VERSION,
 		services = services[:],
+		events   = events[:],
 	}
 	data, err := json.marshal(schema, {pretty = true}, alloc)
 	if err != nil {

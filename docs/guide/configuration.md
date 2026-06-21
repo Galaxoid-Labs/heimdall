@@ -19,6 +19,7 @@ version      = "1.0.0"
 build        = "1"
 display_name = "My App"
 icon         = "icon.png"             # .png is auto-converted to .icns
+schemes      = "myapp"                # deep-link URL scheme(s); comma-separate for multiple
 
 [bundle.macos]                        # only what's macOS-specific
 min_macos = "12.0"
@@ -47,7 +48,8 @@ common, so simple projects stay simple.
 `bindings` (typed-client base path; omit to disable auto-generation).
 
 **`[bundle]`** — `identifier` (required), `version`, `build`, `display_name`,
-`icon`, plus `[bundle.macos]` `min_macos` / `category`.
+`icon`, `schemes` (deep-link URL schemes — see [Deep linking](./deep-linking.md)),
+plus `[bundle.macos]` `min_macos` / `category`.
 
 **`[sign]`** — `identity`, `entitlements`, `notary_profile` (typically under
 `[sign.macos]`).

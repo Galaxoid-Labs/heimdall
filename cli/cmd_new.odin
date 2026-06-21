@@ -466,6 +466,11 @@ main :: proc() {
 		// 		{label = "Close", role = .Quit},
 		// 	}},
 		// },
+		// Deep linking is OPTIONAL. List the schemes you handle here AND register
+		// them with the OS via [bundle].schemes in heimdall.toml. Incoming URLs
+		// arrive as an "open-url" event (on("open-url", ...)) and/or this hook:
+		// url_schemes = {"__NAME__"},
+		// on_open_url = proc(app: ^hd.App, url: string) { fmt.println("opened:", url) },
 	})
 	if err != nil {
 		fmt.eprintfln("create failed: %v", err)
@@ -526,6 +531,9 @@ version      = "0.1.0"
 build        = "1"
 display_name = "__TITLE__"
 icon         = "icon.png"   # app icon (macOS .icns, Linux hicolor, Windows .ico + exe resource)
+# Deep linking: register custom URL scheme(s) so the OS routes myapp://… to your
+# app. Match these in App_Config.url_schemes. Comma-separate for multiple.
+# schemes     = "__NAME__"
 # Used across platforms; on Windows, maintainer -> installer Publisher, homepage -> its URL:
 # summary     = "A short one-liner"
 # description = "A longer description."
@@ -647,6 +655,12 @@ document.querySelector("#go").addEventListener("click", async () => {
 // Native menu clicks arrive as a "menu" event with the item's id.
 on("menu", (e) => {
   console.log("menu:", e.id);
+});
+
+// Deep link: if you enable a URL scheme (App_Config.url_schemes + [bundle].schemes),
+// opening myapp://… delivers the URL here.
+on("open-url", (e) => {
+  console.log("open-url:", e.url);
 });
 `
 

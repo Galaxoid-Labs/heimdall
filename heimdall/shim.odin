@@ -62,6 +62,17 @@ SHIM_JS_NATIVE :: `
     invoke: invoke, on: on, _event: _event, _resolve: _resolve, _reject: _reject,
   };
   window.heimdall = window.__HEIMDALL__; // short, friendly alias
+
+  // Tell Odin the frontend is ready once the page's own scripts have run (so
+  // on(...) handlers exist), letting it flush any queued events — e.g. a
+  // cold-start deep-link "open-url". Fires after parser-inserted classic/defer/
+  // module scripts, which is exactly when app handlers are registered.
+  function ready() { invoke("win.__ready", {}); }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", ready);
+  } else {
+    ready();
+  }
 })();
 `
 

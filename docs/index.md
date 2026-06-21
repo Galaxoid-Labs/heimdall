@@ -17,7 +17,7 @@ hero:
       link: /guide/introduction
     - theme: alt
       text: GitHub
-      link: https://github.com/ismyhc/heimdall
+      link: https://github.com/galaxoid-labs/heimdall
 
 features:
   - title: Bring your own frontend

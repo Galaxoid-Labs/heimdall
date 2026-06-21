@@ -8,6 +8,7 @@ import "core:strings"
 Schema :: struct {
 	version:  string,
 	services: []Schema_Service,
+	events:   []Schema_Event,
 }
 Schema_Service :: struct {
 	name:     string,
@@ -17,6 +18,10 @@ Schema_Command :: struct {
 	name:   string,
 	args:   []Schema_Field,
 	result: []Schema_Field,
+}
+Schema_Event :: struct {
+	name:    string,
+	payload: []Schema_Field,
 }
 Schema_Field :: struct {
 	name: string,
@@ -98,10 +103,34 @@ generate_client_dts :: proc(schema: Schema, allocator := context.allocator) -> s
 		}
 		strings.write_string(&b, "};\n\n")
 	}
-	fmt.sbprintln(
-		&b,
-		"export declare function on(name: string, handler: (payload: any) => void): () => void;",
-	)
+
+	// Typed events: a name -> payload map, a generic `on` for declared events
+	// (autocomplete + typed payload), and a string fallback so undeclared events
+	// still type-check.
+	if len(schema.events) > 0 {
+		strings.write_string(&b, "export interface HeimdallEvents {\n")
+		for ev in schema.events {
+			strings.write_string(&b, "  ")
+			fmt.sbprintf(&b, "%q", ev.name)
+			strings.write_string(&b, ": ")
+			strings.write_string(&b, field_object(ev.payload))
+			strings.write_string(&b, ";\n")
+		}
+		strings.write_string(&b, "}\n\n")
+		fmt.sbprintln(
+			&b,
+			"export declare function on<K extends keyof HeimdallEvents>(name: K, handler: (payload: HeimdallEvents[K]) => void): () => void;",
+		)
+		fmt.sbprintln(
+			&b,
+			"export declare function on(name: string, handler: (payload: any) => void): () => void;",
+		)
+	} else {
+		fmt.sbprintln(
+			&b,
+			"export declare function on(name: string, handler: (payload: any) => void): () => void;",
+		)
+	}
 	return strings.to_string(b)
 }
 

@@ -639,3 +639,86 @@ truncates an unquoted value at `#`), so inline comments work.
 **Verified:** scaffold → `heimdall bundle` puts the icon at
 `/usr/share/icons/hicolor/512x512/apps/<id>.png` in both `.deb` and `.rpm` with
 `.desktop` `Icon=<id>` resolving to it.
+
+## D28 — macOS backend parity pass (resizable, web focus, accelerators)
+
+**Decided:** Brought `backend_darwin.odin` up to parity with the Linux/Windows
+backends on three window-behavior gaps:
+
+- **`resizable`/`fixed` honored.** At create the window's style mask only sets the
+  `NSWindowStyleMaskResizable` bit when `App_Config.resizable` is true (a fixed
+  window also loses the green zoom/maximize button), and `dwn_set_size` toggles
+  that bit per the `fixed` arg — matching Linux `gtk_window_set_resizable` and
+  Windows `WS_THICKFRAME`/`WS_MAXIMIZEBOX`. `dwn_set_size` also no longer
+  re-centers (Linux/Windows leave position unchanged on resize).
+- **Initial web-content focus.** `dwn_run` (on show) and the `.Show`/`.Focus`
+  window ops now `makeFirstResponder:` the WKWebView, so the user can type without
+  clicking first — parity with Linux `grab_focus` / Windows `MoveFocus`.
+- **Menu accelerators with web focus — verified.** With the web view holding
+  first responder, a `Cmd+1` still triggered the menu item (`_probe_menu` reported
+  `{id:"probe.fire"}`), confirming macOS routes Cmd-equivalents through the menu
+  via the responder chain (no explicit forward needed, unlike Windows'
+  `AcceleratorKeyPressed`→`TranslateAcceleratorW`).
+
+**Verified:** all `_probe*` pass on macOS native, including `_probe_window` (every
+window op `ok`) and `_probe_menu` (accelerator round-trip while web-focused).
+
+## D29 — Typed event payloads in generated bindings
+
+**Decided:** Events get optional typing the same way commands do — via an explicit
+declaration the schema-dump can reflect. New API `event(app, name, T: typeid)`
+records a name -> payload-type mapping in `app.events`; `generate-bindings` walks
+it and emits a `HeimdallEvents` interface plus a generic
+`on<K extends keyof HeimdallEvents>(name, handler)` overload, with a
+`(name: string, handler)` fallback so undeclared events still type-check.
+
+**Why this shape:** `emit(app, name, payload)` is called inline with no
+registration point, so there's nothing to reflect. Rather than statically parse
+`emit` call sites (the fragile path we rejected for commands), the user declares
+the payload type once — mirroring `command()` — and the same `core:reflect` RTTI
+produces the `.ts`. Fully additive: untyped `emit`/`on` are unchanged; not
+declaring an event just falls back to `any`.
+
+**Built-in:** the framework auto-declares the `menu` event (`Menu_Event{id}`) in
+`create`, so generated bindings always type `on("menu", ...)`.
+
+**Verified:** `generate-bindings` on `examples/hello` emits `HeimdallEvents` with
+the auto `menu` and a user-declared `greeting.tick`; `tsc --strict` type-checks
+the generated `.d.ts` clean, and a deliberate payload-type mismatch is correctly
+rejected (TS2322). All `_probe*` still pass (incl. `_probe_alloc` 0 leaks — the
+new `app.events` map is freed in `destroy`).
+
+## D30 — Deep linking (custom URL scheme)
+
+**Decided:** Apps can register a custom URL scheme (`myapp://…`) and receive the
+opening URL. Two-place declaration: `App_Config.url_schemes` (runtime argv match)
++ `[bundle].schemes` in heimdall.toml (OS registration at bundle time). Delivery
+is surfaced both ways — an `on_open_url(app, url)` Odin hook AND a typed
+`open-url` event (auto-declared like `menu`).
+
+**Registration** is wired into each bundler: macOS `CFBundleURLTypes`
+(cmd_bundle_darwin), Linux `.desktop` `MimeType=x-scheme-handler/<s>` + `Exec …%u`
+(cmd_bundle_linux), Windows `HKCR\<scheme>\shell\open\command` registry keys in
+the Inno installer (cmd_bundle_windows).
+
+**Delivery:**
+- macOS: `NSApplicationDelegate application:openURLs:` (the shared handler is also
+  the NSApp delegate). Cold-start AND already-running, single-instance free.
+- Windows/Linux: cold-start URL via argv (`deliver_launch_url` scans `os.args`).
+  The **already-running** case (forward to the live instance) needs
+  single-instance IPC — deferred (user chose: ship the 80%, note clearly).
+
+**Cold-start race fix:** a launch URL exists before the page does, so the
+`open-url` event is queued (`app.pending_urls`) and flushed when the shim calls a
+reserved `win.__ready` command on `DOMContentLoaded` — after the app's `on(...)`
+handlers are registered. The Odin hook fires immediately. `win.__ready` is
+underscore-prefixed and filtered out of generated bindings.
+
+**Why declaration (not static emit-scan):** same rationale as commands/events —
+explicit `url_schemes` is reflectable and robust; no source parsing.
+
+**Verified:** `_probe_deeplink` confirms hook + queued typed event both receive
+the URL; the macOS bundler emits a `plutil`-clean `CFBundleURLTypes` with the
+configured schemes; a fresh scaffold builds. NOT verified headlessly: the full
+LaunchServices `open myapp://` round-trip (needs an OS-registered bundle) and the
+Windows/Linux argv path (those backends build on their own machines).

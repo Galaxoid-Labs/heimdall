@@ -1,11 +1,11 @@
 # Internals
 
 For people working *on* Heimdall (not building apps with it). For the full design
-rationale see [`CLAUDE.md`](https://github.com/ismyhc/heimdall/blob/main/CLAUDE.md);
+rationale see [`CLAUDE.md`](https://github.com/galaxoid-labs/heimdall/blob/main/CLAUDE.md);
 for the phased build plan,
-[`DEVELOPMENT.md`](https://github.com/ismyhc/heimdall/blob/main/DEVELOPMENT.md);
+[`DEVELOPMENT.md`](https://github.com/galaxoid-labs/heimdall/blob/main/DEVELOPMENT.md);
 for specific decisions and their tradeoffs,
-[`DECISIONS.md`](https://github.com/ismyhc/heimdall/blob/main/DECISIONS.md).
+[`DECISIONS.md`](https://github.com/galaxoid-labs/heimdall/blob/main/DECISIONS.md).
 
 ## Layout
 
@@ -76,14 +76,15 @@ of them use it.
 | Asset embed + serving (`app://`) | ✅ |
 | Lifecycle hooks, errors, allocator hygiene | ✅ |
 | CLI: new/dev/build/bundle/sign/embed/generate-bindings/doctor | ✅ (`dev` watch loop lightly tested) |
-| Typed bindings (`generate-bindings`) | ✅ |
+| Typed bindings (`generate-bindings`) — commands + events | ✅ |
 | Native macOS WKWebView backend | ✅ |
 | Native Linux backend (GTK4 + libadwaita + webkitgtk-6.0) | ✅ |
 | Native Windows backend (WebView2 / COM) | ✅ |
 | Native menus (custom + role + custom-event items; macOS adds App/Edit/Window) | ✅ macOS + Linux + Windows |
 | macOS `.app` bundling + code signing + notarization | ✅ (notarization needs a real Apple account to exercise) |
 | Windows installer (Inno Setup `.exe`) + portable `.zip` + `signtool` signing | ✅ |
-| Deep linking (`myapp://`), `.dmg` | ⏳ future |
+| Deep linking (`myapp://`) — registration + delivery | ✅ macOS full; Win/Linux cold-start (single-instance forwarding ⏳) |
+| `.dmg`, AppImage, tray, native dialogs | ⏳ future |
 
 ## How verification works
 
@@ -96,6 +97,10 @@ writes a JSON artifact to `/tmp` — so they're CI-checkable without a human cli
 - `_probe_assets` — asset serving over `app://`
 - `_probe_lifecycle` — `on_startup` / `on_shutdown` via `terminate`
 - `_probe_alloc` — zero leaks / bad frees under a tracking allocator
+- `_probe_window` — every window-control op round-trips
+- `_probe_menu` — native menu accelerator → `emit("menu")` → `on("menu")`
+- `_probe_deeplink` — cold-start URL queue → `win.__ready` → typed `on("open-url")`
+  + the `on_open_url` hook
 
 Run one against the platform's backend:
 

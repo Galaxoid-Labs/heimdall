@@ -15,6 +15,15 @@ App :: struct {
 
 	// Event bus.
 	event_allocator:    runtime.Allocator,
+	// Declared event payload types (name -> typeid), for typed `.d.ts` generation.
+	// Populated by `event()`; optional — untyped emit/on works without it.
+	events:             map[string]typeid,
+
+	// Deep linking (custom URL scheme). `pending_urls` holds open-url events
+	// queued until the frontend signals ready (so a cold-start URL isn't lost
+	// before the page's on("open-url") handler is registered). See deeplink.odin.
+	frontend_ready:     bool,
+	pending_urls:       [dynamic]string,
 
 	// Production asset server (Phase 3); nil in dev or when no assets are set.
 	server:             ^Asset_Server,
@@ -42,6 +51,13 @@ App_Config :: struct {
 	center:        bool,               // center on screen at startup (best-effort)
 	hidden:        bool,               // start hidden; show later with window_show
 
+	// Deep linking (custom URL scheme). `url_schemes` lists the schemes this app
+	// handles (e.g. {"myapp"}); used at runtime to recognize a launch URL in argv
+	// (Windows/Linux). Register the scheme with the OS via `[bundle].schemes` in
+	// heimdall.toml so the installer wires it up. See docs/guide/deep-linking.md.
+	url_schemes:   []string,
+	on_open_url:   proc(app: ^App, url: string), // app opened via myapp://… (also an "open-url" event)
+
 	// Lifecycle hooks. All optional (nil == skip).
 	on_startup:    proc(app: ^App) -> Error, // after shell init, before frontend loads; Error aborts run
 	on_shutdown:   proc(app: ^App),          // after the event loop exits; clean up here
@@ -63,12 +79,19 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 	app.registry_allocator = context.allocator
 	app.event_allocator = context.allocator
 	app.registry = make(map[string]Thunk, 16, context.allocator)
+	app.events = make(map[string]typeid, 8, context.allocator)
 
 	// Built-in `win` window-control service. Registered before the schema-dump
 	// early return so it also lands in generated bindings (the typed `win`
 	// namespace); its handlers only touch the backend at runtime, never in schema
 	// mode.
 	register_window_service(app)
+
+	// Built-in events, declared so generated bindings always type them: `menu`
+	// (custom menu item clicked) and `open-url` (deep-link). See menu.odin /
+	// deeplink.odin.
+	event(app, "menu", Menu_Event)
+	event(app, "open-url", Open_Url)
 
 	// Schema-dump mode: no native shell (no display needed). The registry still
 	// gets populated by service()/command(); `run` dumps it.
@@ -164,6 +187,11 @@ run :: proc(app: ^App) {
 		}
 	}
 
+	// Deep linking: deliver a cold-start launch URL (Windows/Linux pass it in
+	// argv; macOS uses application:openURLs:). The frontend gets it as an
+	// "open-url" event once it signals ready; the on_open_url hook fires now.
+	deliver_launch_url(app)
+
 	app.backend.run(app) // blocks until the window closes
 
 	// Lifecycle: on_shutdown runs once the loop exits. (should_quit — vetoing a
@@ -187,5 +215,13 @@ destroy :: proc(app: ^App) {
 		delete(key, app.registry_allocator)
 	}
 	delete(app.registry)
+	for key in app.events {
+		delete(key, app.registry_allocator)
+	}
+	delete(app.events)
+	for url in app.pending_urls {
+		delete(url, app.event_allocator)
+	}
+	delete(app.pending_urls)
 	free(app)
 }

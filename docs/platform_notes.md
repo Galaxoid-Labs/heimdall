@@ -213,3 +213,28 @@ round-trip).
   (`signtool`, cert subject from `[sign.windows] identity`). `heimdall doctor`
   reports the build-time tooling (Inno Setup `iscc`, Windows SDK `rc.exe`) as
   optional; only the WebView2 runtime is required to *run* a shipped app.
+
+## Deep linking — per-platform delivery
+
+How a `myapp://…` URL reaches the running app (see the
+[Deep linking guide](guide/deep-linking.md) for the user-facing API).
+
+- **Registration** (all platforms, at bundle time, from `[bundle].schemes`):
+  macOS `CFBundleURLTypes` in `Info.plist`; Linux `MimeType=x-scheme-handler/<s>`
+  in the `.desktop` (Exec gets `%u`), activated by `update-desktop-database` in
+  the package post-install; Windows `HKCR\<scheme>\shell\open\command` registry
+  keys in the Inno installer.
+- **macOS delivery:** `NSApplicationDelegate application:openURLs:` (the shared
+  handler object is also set as the NSApp delegate). Fires on cold-start AND while
+  already running — LaunchServices reuses the live instance, so single-instance is
+  free. macOS skips argv parsing.
+- **Windows / Linux delivery:** the URL arrives as a command-line argument
+  (`%1` / `%u`). `deliver_launch_url` (deeplink.odin) scans `os.args` for a
+  `<scheme>://` arg at startup. The **already-running** case needs single-instance
+  forwarding (Windows: named mutex + `WM_COPYDATA`; Linux: D-Bus or a lockfile +
+  socket) to hand the URL to the live instance — NOT yet implemented; a second
+  launch currently starts a new instance that gets the URL via argv.
+- **Frontend timing:** a cold-start URL is known before the page exists, so the
+  `open-url` event is queued and flushed when the shim calls the reserved
+  `win.__ready` command on `DOMContentLoaded` (after the app's `on(...)` handlers
+  are registered). The `on_open_url` Odin hook always fires immediately.

@@ -131,10 +131,35 @@ const off = on("file.progress", p => updateBar(p.read / p.total))
 // off()  // unsubscribe
 ```
 
-Want typed `invoke` in your editor? `heimdall generate-bindings` writes a typed
-client (`heimdall.gen.js` + `.d.ts`) from your Odin types — `dev`/`build`
-regenerate it automatically. Optional and additive; `window.heimdall.invoke` works
+Want typed `invoke` **and** `on` in your editor? `heimdall generate-bindings`
+writes a typed client (`heimdall.gen.js` + `.d.ts`) from your Odin types —
+`dev`/`build` regenerate it automatically. Commands are typed from their
+arg/result structs; events are typed when you declare the payload with
+`hd.event(app, "name", T)`. Optional and additive; `window.heimdall.invoke` works
 without it.
+
+---
+
+## Deep linking — `myapp://`
+
+Open your app from a custom URL scheme. Declare the scheme and handle incoming
+URLs via an Odin hook and/or a typed `open-url` event:
+
+```odin
+hd.create(hd.App_Config{
+    url_schemes = {"myapp"},
+    on_open_url = proc(app: ^hd.App, url: string) { route(url) },
+})
+```
+```js
+on("open-url", e => router.navigate(e.url))
+```
+
+Register it with the OS via `[bundle].schemes` in `heimdall.toml`; `heimdall
+bundle` wires up macOS `CFBundleURLTypes`, the Linux `.desktop` handler, and the
+Windows registry. macOS works fully (cold-start + already-running); Windows/Linux
+handle cold-start today (single-instance forwarding is a follow-up). See
+[docs/guide/deep-linking.md](docs/guide/deep-linking.md).
 
 ---
 
@@ -224,6 +249,7 @@ Full docs live in **[`docs/`](docs/guide/getting-started.md)** (a
 [Getting Started](docs/guide/getting-started.md) ·
 [Commands](docs/guide/commands.md) ·
 [Events](docs/guide/events.md) ·
+[Deep linking](docs/guide/deep-linking.md) ·
 [Configuration](docs/guide/configuration.md) ·
 [Packaging](docs/guide/packaging.md) ·
 [CLI](docs/reference/cli.md) ·

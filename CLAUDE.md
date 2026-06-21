@@ -65,21 +65,29 @@ backends — the vendored `webview/webview` bootstrap, the `HEIMDALL_WEBVIEW` de
 and the `--webview` flag have been removed (capstone complete). The framework is
 pure Odin + each platform's system webview. Candidate next steps, none blocking:
 
-- **macOS backend parity pass** (Linux/Windows are the most complete; bring macOS
-  up to match):
-  - `dwn_set_size` (`backend_darwin.odin`) **ignores `fixed`** — the macOS window is
-    always resizable regardless of `App_Config.resizable`. Linux
-    (`gtk_window_set_resizable`) and Windows (`WS_THICKFRAME`/`WS_MAXIMIZEBOX`)
-    honor it.
-  - **Verify menu accelerators fire when the web content has focus.** Windows needed
-    an explicit `AcceleratorKeyPressed` → `TranslateAcceleratorW` forward; macOS
-    *should* get this free via the responder chain / `performKeyEquivalent:`, but
-    confirm a `Cmd+…` shortcut works after clicking into the page.
-  - Initial web-content keyboard focus on show (Windows uses `MoveFocus`, Linux
-    `grab_focus`) — check the WKWebView gets first-responder on launch.
+- **macOS backend parity pass — DONE.** macOS now matches Linux/Windows:
+  `resizable`/`fixed` is honored (Resizable style-mask bit at create +
+  toggled in `dwn_set_size`); the WKWebView gets first-responder focus on
+  show/focus (parity with Linux `grab_focus` / Windows `MoveFocus`); menu
+  accelerators verified firing while the web content has focus (responder chain).
+  All `_probe*` incl. `_probe_window`/`_probe_menu` pass.
 - Tray (reuse `tray-odin`) + native dialogs across all three backends.
-- Typed **event** payloads in the generated `.d.ts` (commands already covered).
-- Deep linking (`myapp://`), `.dmg`, AppImage.
+- `.dmg`, AppImage.
+- **Deep-link follow-up:** Windows/Linux single-instance forwarding (the
+  "already-running" case). macOS is complete; cold-start works on all three.
+  Concrete per-platform steps are in the `TODO` block at the top of
+  `heimdall/deeplink.odin` (Windows: mutex + `WM_COPYDATA`; Linux: GApplication
+  open-forwarding or a lockfile+socket). Verify on a real installed build.
+
+Done since:
+- Typed **event** payloads — `event(app, name, T)` declares a payload type;
+  `generate-bindings` emits a `HeimdallEvents` map + generic typed `on<K>`
+  (commands were already typed). The built-in `menu` event is auto-declared.
+- **Deep linking** (`myapp://`) — `App_Config.url_schemes` + `on_open_url` hook +
+  typed `open-url` event; OS registration from `[bundle].schemes` (macOS
+  CFBundleURLTypes / Linux .desktop MimeType / Windows registry). macOS delivery
+  via `application:openURLs:` (cold-start + running); Windows/Linux cold-start via
+  argv. Cold-start events queue until the frontend signals ready (`win.__ready`).
 
 ---
 

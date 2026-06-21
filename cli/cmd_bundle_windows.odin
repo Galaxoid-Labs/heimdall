@@ -288,6 +288,21 @@ windows_iss_text :: proc(p: Project, display, exe, src_exe, license_abs, ico_abs
 	w(&b, `Name: "{group}\{cm:UninstallProgram,`, display, `}"; Filename: "{uninstallexe}"`)
 	w(&b, `Name: "{autodesktop}\`, display, `"; Filename: "{app}\`, exe, `"; Tasks: desktopicon`)
 	w(&b, "")
+
+	// Deep linking: register each URL scheme so Windows routes myapp://… to the
+	// app (delivered as argv %1). HKA = per-user or per-machine to match install.
+	if len(p.schemes) > 0 {
+		w(&b, "[Registry]")
+		for s in p.schemes {
+			base := strings.concatenate({`Software\Classes\`, s}, context.temp_allocator)
+			w(&b, `Root: HKA; Subkey: "`, base, `"; ValueType: string; ValueData: "URL:`, s, ` Protocol"; Flags: uninsdeletekey`)
+			w(&b, `Root: HKA; Subkey: "`, base, `"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""`)
+			w(&b, `Root: HKA; Subkey: "`, base, `\DefaultIcon"; ValueType: string; ValueData: "{app}\`, exe, `,0"`)
+			w(&b, `Root: HKA; Subkey: "`, base, `\shell\open\command"; ValueType: string; ValueData: """{app}\`, exe, `"" ""%1"""`)
+		}
+		w(&b, "")
+	}
+
 	w(&b, "[Run]")
 	w(&b, `Filename: "{app}\`, exe, `"; Description: "{cm:LaunchProgram,`, display, `}"; Flags: nowait postinstall skipifsilent`)
 	return strings.to_string(b)

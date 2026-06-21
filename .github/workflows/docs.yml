@@ -25,6 +25,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run docs:build
+      - run: touch docs/.vitepress/dist/.nojekyll  # don't let Pages run Jekyll on the build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

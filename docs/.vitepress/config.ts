@@ -41,6 +41,7 @@ export default defineConfig({
             { text: 'Events (emit / on)', link: '/guide/events' },
             { text: 'Window', link: '/guide/window' },
             { text: 'Menus', link: '/guide/menus' },
+            { text: 'Deep linking', link: '/guide/deep-linking' },
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Packaging & Signing', link: '/guide/packaging' },
             { text: 'CI / GitHub Actions', link: '/ci' },
@@ -61,13 +62,13 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/ismyhc/heimdall' },
+      { icon: 'github', link: 'https://github.com/galaxoid-labs/heimdall' },
     ],
 
     search: { provider: 'local' },
 
     editLink: {
-      pattern: 'https://github.com/ismyhc/heimdall/edit/main/docs/:path',
+      pattern: 'https://github.com/galaxoid-labs/heimdall/edit/main/docs/:path',
     },
   },
 })

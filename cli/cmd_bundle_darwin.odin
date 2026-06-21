@@ -102,6 +102,18 @@ info_plist :: proc(p: Project, display: string, has_icon: bool) -> string {
 	}
 	strings.write_string(&b, "\t<key>NSHighResolutionCapable</key>\n\t<true/>\n")
 
+	// Deep linking: register custom URL schemes (CFBundleURLTypes) so the OS
+	// routes myapp://… to this app via application:openURLs:.
+	if len(p.schemes) > 0 {
+		strings.write_string(&b, "\t<key>CFBundleURLTypes</key>\n\t<array>\n\t\t<dict>\n")
+		fmt.sbprintfln(&b, "\t\t\t<key>CFBundleURLName</key>\n\t\t\t<string>%s</string>", xml_escape(p.bundle_id))
+		strings.write_string(&b, "\t\t\t<key>CFBundleURLSchemes</key>\n\t\t\t<array>\n")
+		for s in p.schemes {
+			fmt.sbprintfln(&b, "\t\t\t\t<string>%s</string>", xml_escape(s))
+		}
+		strings.write_string(&b, "\t\t\t</array>\n\t\t</dict>\n\t</array>\n")
+	}
+
 	strings.write_string(&b, "</dict>\n</plist>\n")
 	return strings.to_string(b)
 }

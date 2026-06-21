@@ -29,6 +29,7 @@ Project :: struct {
 	category:     string, // app category — macOS LSApplicationCategoryType; on Linux, freedesktop Categories (e.g. "Utility;")
 	min_macos:    string, // LSMinimumSystemVersion (macOS)
 	bundle_icon:  string, // path to an app icon (.icns/.png on macOS; .png on Linux)
+	schemes:      []string, // deep-link URL schemes to register (e.g. "myapp" or "myapp,acme")
 
 	// Linux packaging ([bundle] + [bundle.linux]) — .deb / .rpm metadata.
 	summary:      string, // one-line description (defaults to display_name)
@@ -182,6 +183,7 @@ resolve_project :: proc(p: ^Project, m: map[string]string, plat: string) {
 	if v, ok := resolve(m, "bundle", "category", plat); ok {p.category = v}
 	if v, ok := resolve(m, "bundle", "min_macos", plat); ok {p.min_macos = v}
 	if v, ok := resolve(m, "bundle", "icon", plat); ok {p.bundle_icon = v}
+	if v, ok := resolve(m, "bundle", "schemes", plat); ok {p.schemes = split_csv(v)}
 	if v, ok := resolve(m, "bundle", "summary", plat); ok {p.summary = v}
 	if v, ok := resolve(m, "bundle", "description", plat); ok {p.description = v}
 	if v, ok := resolve(m, "bundle", "maintainer", plat); ok {p.maintainer = v}
@@ -194,4 +196,17 @@ resolve_project :: proc(p: ^Project, m: map[string]string, plat: string) {
 	if v, ok := resolve(m, "sign", "identity", plat); ok {p.sign_identity = v}
 	if v, ok := resolve(m, "sign", "entitlements", plat); ok {p.sign_entitlements = v}
 	if v, ok := resolve(m, "sign", "notary_profile", plat); ok {p.notary_profile = v}
+}
+
+// Split a comma-separated value into trimmed, non-empty parts.
+@(private = "file")
+split_csv :: proc(s: string) -> []string {
+	out := make([dynamic]string)
+	for part in strings.split(s, ",") {
+		t := strings.trim_space(part)
+		if t != "" {
+			append(&out, strings.clone(t))
+		}
+	}
+	return out[:]
 }

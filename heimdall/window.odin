@@ -112,6 +112,17 @@ win_c_set_title :: proc(app: ^App, a: Win_Title) -> (Win_Empty, Error) {window_s
 @(private = "file")
 win_c_set_size :: proc(app: ^App, a: Win_Size) -> (Win_Empty, Error) {window_set_size(app, a.width, a.height);return {}, nil}
 
+// Reserved internal command. The injected shim calls this once the page is ready
+// (DOMContentLoaded), so the frontend's on(...) handlers are registered before we
+// flush queued events (e.g. a cold-start deep-link "open-url"). Underscore-
+// prefixed, so it's excluded from generated bindings.
+@(private = "file")
+win_c_ready :: proc(app: ^App, _: Win_Empty) -> (Win_Empty, Error) {
+	app.frontend_ready = true
+	flush_pending_urls(app)
+	return {}, nil
+}
+
 // Register the built-in `win` service. Called from `create` once the backend is
 // ready. State is the App itself, so handlers reach the backend directly.
 @(private)
@@ -128,4 +139,5 @@ register_window_service :: proc(app: ^App) {
 	command(w, "fullscreen", win_c_fullscreen)
 	command(w, "set_title", win_c_set_title)
 	command(w, "set_size", win_c_set_size)
+	command(w, "__ready", win_c_ready) // internal; hidden from generated bindings
 }

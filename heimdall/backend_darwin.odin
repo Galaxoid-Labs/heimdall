@@ -99,9 +99,14 @@ darwin_backend_create :: proc(app: ^App, debug: bool) -> bool {
 		}
 	}
 
-	// NSWindow.
+	// NSWindow. Honor `resizable` (parity with Linux gtk_window_set_resizable /
+	// Windows WS_THICKFRAME): drop the Resizable bit when the app wants a fixed
+	// window — that also disables the green zoom/maximize button.
 	rect := CGRect{{0, 0}, {f64(dwn.width), f64(dwn.height)}}
-	style := NS.UInteger(1 | 2 | 4 | 8) // Titled|Closable|Miniaturizable|Resizable
+	style := NS.UInteger(1 | 2 | 4) // Titled|Closable|Miniaturizable
+	if app.cfg.resizable {
+		style |= NS_RESIZABLE_MASK
+	}
 	win := msg(id, cls("NSWindow"), "alloc")
 	win = msg(id, oc(win), "initWithContentRect:styleMask:backing:defer:", rect, style, NS.UInteger(2), bool(false))
 	dwn.window = win
@@ -136,6 +141,9 @@ darwin_backend_create :: proc(app: ^App, debug: bool) -> bool {
 	// Same object is the window delegate, so closing the window stops the loop
 	// (and runs should_quit). See window_should_close.
 	msg(nil, oc(win), "setDelegate:", handler)
+	// Same object is the NSApplication delegate, for application:openURLs:
+	// (deep linking). Set before run so a cold-start open-URL is delivered.
+	msg(nil, oc(dwn.nsapp), "setDelegate:", handler)
 	dwn.handler = handler
 
 	// Menu bar (App + Edit + the user's menus + Window).
@@ -237,6 +245,15 @@ make_message_handler :: proc() -> id {
 			auto_cast heimdall_menu_action,
 			"v@:@",
 		)
+		// Deep linking: NSApplicationDelegate application:openURLs: — fires on
+		// cold-start and while already running (LaunchServices reuses this
+		// instance). Wired up by setting this object as the NSApp delegate.
+		NS.class_addMethod(
+			cls_h,
+			intrinsics.objc_find_selector("application:openURLs:"),
+			auto_cast application_open_urls,
+			"v@:@@",
+		)
 		if proto := NS.objc_getProtocol("WKScriptMessageHandler"); proto != nil {
 			NS.class_addProtocol(cls_h, proto)
 		}
@@ -260,6 +277,22 @@ on_script_message :: proc "c" (self: id, cmd: NS.SEL, ucc: id, message: id) {
 	body := msg(id, oc(message), "body") // NSString (we postMessage a string)
 	utf8 := msg(cstring, oc(body), "UTF8String")
 	darwin_handle_message(dwn.app, string(utf8))
+}
+
+// NSApplicationDelegate -application:openURLs: — deep linking. Fires on cold-start
+// and while already running (LaunchServices reuses this instance). `urls` is an
+// NSArray<NSURL*>; deliver each as an open-url.
+@(private = "file")
+application_open_urls :: proc "c" (self: id, cmd: NS.SEL, app_: id, urls: id) {
+	dwn := g_dwn
+	if dwn == nil {return}
+	context = dwn.app.ctx
+	count := msg(NS.UInteger, oc(urls), "count")
+	for i in 0 ..< count {
+		url := msg(id, oc(urls), "objectAtIndex:", i)
+		s := msg(cstring, oc(msg(id, oc(url), "absoluteString")), "UTF8String")
+		deliver_open_url(dwn.app, string(s))
+	}
 }
 
 // WKURLSchemeHandler -webView:startURLSchemeTask:. Serves the embedded asset map
@@ -580,8 +613,16 @@ dwn_set_size :: proc(app: ^App, width, height: int, fixed: bool) {
 	dwn := self_dwn(app)
 	dwn.width = width
 	dwn.height = height
+	// Honor `fixed` (parity with Linux/Windows): toggle the Resizable style bit.
+	mask := msg(NS.UInteger, oc(dwn.window), "styleMask")
+	if fixed {
+		mask &~= NS_RESIZABLE_MASK
+	} else {
+		mask |= NS_RESIZABLE_MASK
+	}
+	msg(nil, oc(dwn.window), "setStyleMask:", mask)
+	// Resize only — don't re-center (Linux/Windows leave position unchanged).
 	msg(nil, oc(dwn.window), "setContentSize:", CGSize{f64(width), f64(height)})
-	msg(nil, oc(dwn.window), "center")
 }
 
 @(private = "file")
@@ -643,6 +684,8 @@ dwn_dispatch_cb :: proc "c" (ctx: rawptr) {
 // Unified window control (NSWindow). Mirrors lin_window_op / wvb_window_op.
 @(private = "file")
 NS_FULLSCREEN_MASK :: NS.UInteger(1 << 14) // NSWindowStyleMaskFullScreen
+@(private = "file")
+NS_RESIZABLE_MASK :: NS.UInteger(1 << 3) // NSWindowStyleMaskResizable
 
 @(private = "file")
 dwn_window_op :: proc(app: ^App, op: Window_Op) {
@@ -666,11 +709,13 @@ dwn_window_op :: proc(app: ^App, op: Window_Op) {
 	case .Show:
 		msg(nil, oc(win), "makeKeyAndOrderFront:", id(nil))
 		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+		msg(nil, oc(win), "makeFirstResponder:", dwn.webview)
 	case .Hide:
 		msg(nil, oc(win), "orderOut:", id(nil))
 	case .Focus:
 		msg(nil, oc(win), "makeKeyAndOrderFront:", id(nil))
 		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+		msg(nil, oc(win), "makeFirstResponder:", dwn.webview)
 	case .Center:
 		msg(nil, oc(win), "center")
 	case .Close:
@@ -684,6 +729,9 @@ dwn_run :: proc(app: ^App) {
 	if !app.cfg.hidden {
 		msg(nil, oc(dwn.window), "makeKeyAndOrderFront:", id(nil))
 		msg(nil, oc(dwn.nsapp), "activateIgnoringOtherApps:", bool(true))
+		// Give the web content initial keyboard focus (parity with Linux
+		// grab_focus / Windows MoveFocus), so the user can type without clicking.
+		msg(nil, oc(dwn.window), "makeFirstResponder:", dwn.webview)
 	}
 
 	// Hand-rolled event loop so terminate() can return cleanly (vs [NSApp run]).
