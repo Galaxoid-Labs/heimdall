@@ -459,6 +459,7 @@ import hd "heimdall"
 main :: proc() {
 	app, err := hd.create(hd.App_Config{
 		title     = "__TITLE__",
+		app_id    = "com.example.__NAME__",  // names your per-app config/data/cache/log dirs (hd.config_dir, etc.) — change to your own reverse-DNS id
 		width     = 800,
 		height    = 600,
 		resizable = true,

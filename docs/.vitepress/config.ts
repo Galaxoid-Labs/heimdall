@@ -40,6 +40,7 @@ export default defineConfig({
             { text: 'Commands', link: '/guide/commands' },
             { text: 'Events', link: '/guide/events' },
             { text: 'Window', link: '/guide/window' },
+            { text: 'Paths', link: '/guide/paths' },
             { text: 'Menus', link: '/guide/menus' },
             { text: 'Deep linking', link: '/guide/deep-linking' },
             { text: 'Configuration', link: '/guide/configuration' },

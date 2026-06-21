@@ -103,6 +103,23 @@ hd.create(hd.App_Config{
 JS via the built-in **`win`** service: `win.minimize()`, `win.close()`, etc. The
 name `win` is reserved.
 
+## Paths (per-app dirs)
+
+One cross-platform API for the OS's config/data/cache/log locations, namespaced by
+`app_id` and created on first access. Returned strings are caller-owned.
+
+```odin
+cfg := hd.config_dir(app)                          // also data_dir/cache_dir/log_dir
+db  := hd.app_path(app, .Data, "db/store.sqlite")  // builds the file path + makes parents
+// hd.app_dir(app, kind) is the general form; Path_Kind :: enum {Config, Data, Cache, Log}
+```
+
+Set `app_id = "com.example.myapp"` in `App_Config` (falls back to a sanitized
+`title`). Built-in **`paths`** JS service: `await paths.config()` → `{path}` (also
+`data`/`cache`/`log`). `paths` is a **reserved** service name (like `win`). The
+frontend has no OS access — use a path to display, or pass it to a command that
+does the file I/O in Odin. See `docs/guide/paths.md`.
+
 ## Menus (native)
 
 ```odin

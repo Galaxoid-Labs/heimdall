@@ -43,6 +43,7 @@ Devtools :: enum {
 // hooks are all optional (nil == skip).
 App_Config :: struct {
 	title:         string,
+	app_id:        string,             // reverse-DNS-ish id for per-app data dirs, e.g. "com.example.myapp" (see paths.odin); defaults to a sanitized title
 	width, height: int,
 	resizable:     bool,
 	devtools:      Devtools,           // web inspector: Auto (dev on/release off), On, or Off
@@ -97,6 +98,10 @@ create :: proc(cfg: App_Config) -> (^App, Error) {
 	// namespace); its handlers only touch the backend at runtime, never in schema
 	// mode.
 	register_window_service(app)
+
+	// Built-in `paths` service (per-app config/data/cache/log dirs). Registered
+	// before the schema-dump early return so it lands in generated bindings too.
+	register_paths_service(app)
 
 	// Built-in events, declared so generated bindings always type them: `menu`
 	// (custom menu item clicked) and `open-url` (deep-link). See menu.odin /

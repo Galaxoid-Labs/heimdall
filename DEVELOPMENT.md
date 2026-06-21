@@ -90,6 +90,13 @@ Specific deltas to confirm:
       covers them).
 - [ ] **Typed events (D29):** `generate-bindings` emits `HeimdallEvents` incl.
       `menu` + `open-url`.
+- [ ] **Paths (D42):** the `paths.odin` `base_dir` switch only compiles/runs the
+      host branch on each OS — macOS exercises `~/Library/*`, but the **XDG branch
+      (Linux)** and **`%APPDATA%`/`%LOCALAPPDATA%` branch (Windows)** are untested
+      here. On each platform run `odin test heimdall` (the sandboxed `paths_test`)
+      and confirm `hd.config_dir/data_dir/cache_dir/log_dir(app)` resolve to the
+      expected OS locations, are namespaced by `app_id`, and are created. Also
+      check the built-in `paths` JS service (`await paths.config()` → `{path}`).
 - [ ] **Dev console (D34):** dev build shows the inspector, release hides it;
       `devtools = .On` forces it on in a release build, `.Off` off in dev.
       (Linux: WebKitGTK inspector; Windows: Edge DevTools.)

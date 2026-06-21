@@ -947,3 +947,36 @@ it's still the one folder we copy from + tarball. No symlinks, no duplication.
 `.claude/skills/odin-lang/` (latest was unzipped from `~/Downloads/odin-lang.skill`).
 Verified end-to-end: repo → tarball → simulated install → `new` all carry both
 skills; scaffolded app still builds.
+
+## D42 — Cross-platform per-app directories (`paths.odin`)
+
+**Decided:** Ship a small `paths` module — the first of the "OS-integration gaps
+Odin doesn't give you out of the box." One cross-platform API, no OS branching in
+user code: `Path_Kind :: enum {Config, Data, Cache, Log}` with `app_dir`,
+`config_dir/data_dir/cache_dir/log_dir`, and `app_path(app, kind, rel)` (builds a
+file path + creates parents). Dirs are namespaced by `App_Config.app_id` (new
+field; falls back to a sanitized `title`, then `"heimdall-app"`) and created on
+first access. Also a built-in **`paths`** JS service (commands config/data/cache/
+log → `{path}`), registered alongside `win` before the schema-dump return so it's
+typed in generated bindings. `paths` joins `win` as a reserved service name.
+
+**Why these four kinds + these locations:** they match the platform conventions
+(and Tauri's): macOS `~/Library/Application Support|Caches|Logs`; Linux XDG
+(`XDG_CONFIG_HOME`/`DATA`/`CACHE`/`STATE`, falling back to `~/.config` etc.);
+Windows `%APPDATA%` (config/data) + `%LOCALAPPDATA%` (cache/log). Some kinds share
+a physical root on macOS/Windows (Config==Data; Windows Cache==Log) — accepted;
+callers use distinct filenames. This is heimdall's natural responsibility (it owns
+app identity + the native shell); general-purpose libs (SQLite, HTTP) stay out —
+users pick their own Odin packages.
+
+**Scope boundary (from the user):** don't bundle libraries users can choose
+themselves; only fill genuine OS-integration gaps. Paths was picked as the first.
+
+**Notes:** the public API never branches on OS — the `when ODIN_OS` switch is
+file-private in `base_dir`. Returned strings are caller-owned (`context.allocator`
+by default, allocator overridable). Tests (`paths_test.odin`) sandbox HOME/XDG/
+APPDATA/LOCALAPPDATA to a temp dir; assertions are root-independent (id suffix +
+existence) and cleanup is left to the OS temp dir so the parallel runner can't
+race a delete against another test's check. Only the host OS's `base_dir` branch
+compiles per platform — Linux/Windows branches flagged for on-platform check in
+DEVELOPMENT.md.
