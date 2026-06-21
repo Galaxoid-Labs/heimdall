@@ -29,14 +29,14 @@ jobs:
           - { os: ubuntu-24.04-arm, asset: heimdall-linux-arm64 }
           - { os: windows-latest,   asset: heimdall-windows-x86_64.exe }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Odin
         uses: laytan/setup-odin@v2
         with:
           release: dev-2026-06
       - name: Build CLI
         run: odin build cli -o:speed -out:${{ matrix.asset }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
@@ -46,12 +46,12 @@ jobs:
     name: framework tarball
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # The framework is pure Odin source (plus the vendored Windows webview2
       # static lib, which lives inside heimdall/). Ship the framework dir + the
       # Claude Code skills (heimdall new copies these into scaffolded projects).
       - run: tar -czf heimdall-framework.tar.gz heimdall .claude/skills
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: heimdall-framework.tar.gz
           path: heimdall-framework.tar.gz
@@ -62,7 +62,7 @@ jobs:
     needs: [cli, framework]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           path: dist
           merge-multiple: true # flatten all artifacts into dist/
