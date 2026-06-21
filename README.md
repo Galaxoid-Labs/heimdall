@@ -36,6 +36,10 @@ const { message } = await greeting.greet({ name: "Jake" })
 
 ## Get started
 
+> ⚠️ **Pre-release:** prebuilt binaries aren't published yet, so the installers
+> below won't fetch anything until the first release. For now, build the CLI from
+> source — see [Getting Started](docs/guide/getting-started.md#build-from-source).
+
 Install heimdall (downloads a prebuilt CLI + the framework into `~/.heimdall`):
 
 ```sh
@@ -54,10 +58,13 @@ heimdall new myapp                 # vanilla frontend (or --frontend sveltekit)
 cd myapp && heimdall dev           # a window opens, wired to Odin
 ```
 
+**Supported platforms:** macOS (Apple Silicon), Linux (x86_64 + arm64), Windows
+(x86_64). Other platforms (Intel Mac, Windows ARM) — build the CLI from source;
+it's pure Odin.
+
 You still need [Odin](https://odin-lang.org/docs/install/) and a JS runtime
 ([Node.js](https://nodejs.org) or [Bun](https://bun.sh)) to *build* apps —
-`heimdall doctor` checks everything. Prefer building the CLI from source? See
-[Getting Started](docs/guide/getting-started.md).
+`heimdall doctor` checks everything.
 
 Pick a frontend with `--frontend`: `vanilla` (dependency-free, offline) or
 `sveltekit` (runs the official `sv create` — you pick template + TypeScript — and

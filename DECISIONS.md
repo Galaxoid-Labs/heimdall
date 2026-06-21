@@ -904,3 +904,26 @@ No new findings — both surfaces held up. Stable across runs, zero leaks (test
 runner's memory tracking). The `app://` path normalization is covered by the
 already-fuzzed `request_path`/`has_extension` (the map-lookup makes traversal a
 non-issue).
+
+## D40 — Release matrix: native-per-arch; CLI output-name collision fixed
+
+**Fixed** the CI build failure (`Output path …/heimdall/ is a directory`): the
+workflow built with `-out:heimdall`, which collides with the `heimdall/` framework
+directory at the repo root (Windows worked only because it used `heimdall.exe`).
+Now each job builds straight to its release-asset name (`-out:heimdall-<os>-<arch>`),
+dropping the separate rename step. Reproduced + verified the fix locally.
+
+**Matrix = native runner per arch.** Odin can't link cross-compiled binaries
+("Linking for cross compilation … not yet supported"), so every target builds on a
+matching-arch runner: macos-14 (darwin arm64), ubuntu-latest (linux x86_64),
+ubuntu-24.04-arm (linux arm64), windows-latest (windows x86_64).
+
+**Not buildable (Odin limits, not config):**
+- **Windows arm64** — `windows_arm64` is not a supported Odin target at all.
+- **Intel macOS** — dropped per request (re-add a `macos-13`/`darwin_amd64` row to
+  restore).
+
+**Linux arm64:** the Odin release ships a linux-arm artifact, so
+`laytan/setup-odin` installs Odin on the `ubuntu-24.04-arm` runner and builds
+natively. (Confirm on first push that the pinned `dev-2026-06` release includes
+it; bump the pin if a newer release added it.)

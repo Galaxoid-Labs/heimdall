@@ -130,9 +130,16 @@ produced by `.github/workflows/release.yml` on a tag push:
 
 ```sh
 git tag v0.1.0
-git push --tags        # builds the CLI on macOS arm64/x86_64, Linux, Windows,
-                       # tars the framework, writes SHA256SUMS, attaches all
+git push --tags        # builds the CLI natively per arch, tars the framework,
+                       # writes SHA256SUMS, attaches all to the release
 ```
+
+Targets (each built on a native runner — Odin can't link cross-compiled
+binaries): **macOS arm64**, **Linux x86_64**, **Linux arm64**, **Windows x86_64**.
+Windows arm64 is not produced — `windows_arm64` isn't an Odin target. Intel macOS
+isn't built either (add a `macos-13` / `darwin_amd64` matrix row if you need it).
+Build straight to the asset name (`-out:heimdall-<os>-<arch>`), never `-out:heimdall`
+— that collides with the `heimdall/` framework directory.
 
 The installers verify each download against `SHA256SUMS` before installing and
 abort on a mismatch (`HEIMDALL_SKIP_VERIFY=1` opts out — not recommended).

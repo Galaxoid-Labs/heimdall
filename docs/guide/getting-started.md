@@ -19,6 +19,11 @@ or `heimdall docs` to open this documentation locally in your browser.
 
 ## Install heimdall
 
+::: warning Pre-release
+The prebuilt binaries aren't published yet, so the one-liners below won't fetch
+anything until the first release is out. For now, [build from source](#build-from-source).
+:::
+
 The installer downloads a prebuilt CLI and the framework into `~/.heimdall` and
 sets `PATH` + `HEIMDALL_HOME` for you.
 
@@ -36,15 +41,32 @@ Open a new terminal afterward (or `. ~/.heimdall/env`). Pin a version with
 `HEIMDALL_VERSION=v0.1.0`, change the location with `HEIMDALL_HOME`, or skip the
 profile edits with `HEIMDALL_NO_MODIFY_PATH=1`.
 
-::: details Build from source instead
-The CLI is self-contained (just needs Odin). From a clone of the repo:
+### Supported platforms
+
+Prebuilt CLI binaries are published for:
+
+| OS | Architectures |
+| --- | --- |
+| macOS | Apple Silicon (arm64) |
+| Linux | x86_64, arm64 |
+| Windows | x86_64 |
+
+Intel macOS and Windows on ARM aren't built (Windows ARM isn't an Odin target
+yet). On an unsupported platform, [build the CLI from source](#build-from-source) —
+it's pure Odin and compiles wherever Odin runs. Either way you also need Odin +
+[Bun](https://bun.sh) installed to *build apps* (the CLI shells out to them);
+run `heimdall doctor` to check.
+
+### Build from source
+
+The CLI is self-contained (just needs Odin) and compiles on any platform Odin
+supports. From a clone of the repo:
 
 ```sh
 odin build cli -out:heimdall-cli -o:speed
 install -Dm755 heimdall-cli ~/.local/bin/heimdall
 export HEIMDALL_HOME="$PWD"   # so `new` finds the framework to vendor
 ```
-:::
 
 ## Create an app
 

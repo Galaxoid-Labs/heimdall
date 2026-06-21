@@ -12,6 +12,11 @@ permissions:
   contents: write # create the release + upload assets
 
 jobs:
+  # Each target is built NATIVELY on a matching-arch runner — Odin can't link
+  # cross-compiled binaries, so there's no cross path. (Windows ARM64 is omitted:
+  # `windows_arm64` isn't a supported Odin target.) The output is named directly
+  # to the release-asset name — NOT `heimdall`, which would collide with the
+  # `heimdall/` framework directory at the repo root.
   cli:
     name: cli (${{ matrix.asset }})
     runs-on: ${{ matrix.os }}
@@ -19,10 +24,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14,      asset: heimdall-darwin-arm64,    out: heimdall }
-          - { os: macos-13,      asset: heimdall-darwin-x86_64,   out: heimdall }
-          - { os: ubuntu-latest, asset: heimdall-linux-x86_64,    out: heimdall }
-          - { os: windows-latest, asset: heimdall-windows-x86_64.exe, out: heimdall.exe }
+          - { os: macos-14,         asset: heimdall-darwin-arm64 }
+          - { os: ubuntu-latest,    asset: heimdall-linux-x86_64 }
+          - { os: ubuntu-24.04-arm, asset: heimdall-linux-arm64 }
+          - { os: windows-latest,   asset: heimdall-windows-x86_64.exe }
     steps:
       - uses: actions/checkout@v4
       - name: Install Odin
@@ -30,10 +35,7 @@ jobs:
         with:
           release: dev-2026-06
       - name: Build CLI
-        run: odin build cli -o:speed -out:${{ matrix.out }}
-      - name: Rename asset
-        shell: bash
-        run: mv ${{ matrix.out }} ${{ matrix.asset }}
+        run: odin build cli -o:speed -out:${{ matrix.asset }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
