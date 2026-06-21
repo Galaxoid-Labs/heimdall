@@ -82,6 +82,7 @@ const off = on("file.progress", p => updateBar(p.read / p.total))
 ```odin
 hd.create(hd.App_Config{
     title = "My App", width = 900, height = 600, resizable = true,
+    app_id = "com.example.myapp",        // names per-app dirs (see Paths); falls back to title
     dev_url = "http://localhost:5173",   // used by `heimdall dev`
     assets  = ASSETS,                    // embedded by `heimdall build` (from `embed`)
     icon    = #load("icon.png"),
@@ -138,22 +139,24 @@ Items with an `id` emit a `"menu"` event `{ id }` (subscribe with `on("menu", �
 
 Set `url_schemes` (runtime) + `[bundle].schemes` in heimdall.toml (OS
 registration). Incoming URLs arrive via the `on_open_url` hook and an `"open-url"`
-event. macOS is fully supported; Windows/Linux handle cold-start today.
+event. All three platforms handle both cold-start and the already-running case
+(setting `url_schemes` makes the app single-instance — a second `myapp://…` launch
+forwards to the live window instead of opening another).
 
 ## CLI
 
 | Command | Does |
 | --- | --- |
 | `heimdall new <name>` | Scaffold (`--frontend vanilla\|sveltekit`, `--pm …`). |
-| `heimdall dev` | Frontend dev server + app; rebuild on change. (`--webview` opts out of native.) |
+| `heimdall dev` | Frontend dev server + app; rebuild on change. |
 | `heimdall build` | Frontend build → embed → compile a release binary. |
 | `heimdall bundle` | Package: macOS `.app`, Linux `.deb`/`.rpm`, Windows installer. `--sign`/`--adhoc`/`--notarize`. |
 | `heimdall generate-bindings` | Emit the typed `.d.ts` client (commands + events). |
 | `heimdall doctor` | Check toolchain (odin, bun, platform webview deps). |
 
 Build defines (passed to `odin build`): `-define:HEIMDALL_DEV=true` (point at
-`dev_url`), `-define:HEIMDALL_WEBVIEW=true` (force the webview/webview backend on
-macOS), `-define:HEIMDALL_SCHEMA=true` (schema-dump mode).
+`dev_url`), `-define:HEIMDALL_SCHEMA=true` (schema-dump mode). Each platform uses
+its own native webview — there is no `webview/webview` fallback or opt-out flag.
 
 ## heimdall.toml
 

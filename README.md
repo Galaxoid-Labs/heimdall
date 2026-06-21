@@ -198,6 +198,25 @@ Wayland — e.g. `center`/`always_on_top`.)
 
 ---
 
+## Paths
+
+One cross-platform API for the OS's per-app directories — config, data, cache, and
+log — namespaced by your app and created on first access. No branching on OS.
+
+```odin
+cfg := hd.config_dir(app)                          // also data_dir / cache_dir / log_dir
+db  := hd.app_path(app, .Data, "db/store.sqlite")  // file path inside it; makes parents
+```
+```js
+import { paths } from "./heimdall.gen.js"   // built-in `paths` service
+const dir = (await paths.config()).path
+```
+
+Set `app_id` in `App_Config` to name the directories (falls back to a sanitized
+`title`). See [docs/guide/paths.md](docs/guide/paths.md).
+
+---
+
 ## Build & ship
 
 ```sh
@@ -265,6 +284,8 @@ Full docs live in **[`docs/`](docs/guide/getting-started.md)** (a
 [Getting Started](docs/guide/getting-started.md) ·
 [Commands](docs/guide/commands.md) ·
 [Events](docs/guide/events.md) ·
+[Window](docs/guide/window.md) ·
+[Paths](docs/guide/paths.md) ·
 [Deep linking](docs/guide/deep-linking.md) ·
 [Configuration](docs/guide/configuration.md) ·
 [Packaging](docs/guide/packaging.md) ·

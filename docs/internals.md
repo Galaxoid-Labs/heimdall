@@ -25,6 +25,11 @@ heimdall/
     schema.odin              # schema-dump mode (reflect -> JSON) for typed bindings
     assets.odin              # Asset type + MIME guessing
     server.odin              # loopback static server (unused fallback seam — see below)
+    window.odin              # window-control API + built-in `win` service
+    menu.odin                # native menu bar (Menu_Item -> NSMenu/GMenu/HMENU)
+    deeplink.odin            # custom URL schemes (myapp://) + single-instance forwarding
+    paths.odin               # per-app config/data/cache/log dirs + built-in `paths` service
+    config.odin              # build-define flags (HEIMDALL_DEV/SCHEMA) + VERSION
     errors.odin              # the Error union
   cli/                       # the `heimdall` CLI (self-contained, no framework import)
   examples/                  # hello and headless _probe* self-tests
