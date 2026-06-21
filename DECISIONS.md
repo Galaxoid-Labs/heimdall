@@ -927,3 +927,23 @@ ubuntu-24.04-arm (linux arm64), windows-latest (windows x86_64).
 `laytan/setup-odin` installs Odin on the `ubuntu-24.04-arm` runner and builds
 natively. (Confirm on first push that the pinned `dev-2026-06` release includes
 it; bump the pin if a newer release added it.)
+
+## D41 — Bundled Claude Code skills (heimdall + odin-lang)
+
+**Decided:** Ship Claude Code skills with Heimdall. `.claude/skills/` at the repo
+root is the single source — `heimdall/` (the Heimdall API + workflow, authored
+here) and `odin-lang/` (vendored from the user's skill). They are:
+- **active in the heimdall repo** (Claude Code auto-discovers `.claude/skills/`),
+- **shipped** in `heimdall-framework.tar.gz` (`tar … heimdall .claude/skills`),
+- **copied into scaffolded projects** by `heimdall new` (from
+  `<framework_parent>/.claude/skills` → `<project>/.claude/skills`).
+
+**Why `.claude/skills/` (not inside `heimdall/`):** it's the conventional location
+Claude Code reads, so it's active for framework devs with zero extra steps, and
+it's still the one folder we copy from + tarball. No symlinks, no duplication.
+
+**Notes:** `copy_directory_all` needs the dest's parent, so `new` mkdirs
+`.claude` first. The vendored `odin-lang/` is a snapshot — refresh by replacing
+`.claude/skills/odin-lang/` (latest was unzipped from `~/Downloads/odin-lang.skill`).
+Verified end-to-end: repo → tarball → simulated install → `new` all carry both
+skills; scaffolded app still builds.

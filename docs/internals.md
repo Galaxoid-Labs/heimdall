@@ -29,7 +29,13 @@ heimdall/
   cli/                       # the `heimdall` CLI (self-contained, no framework import)
   examples/                  # hello and headless _probe* self-tests
   docs/
+  .claude/skills/            # Claude Code skills (heimdall + odin-lang)
 ```
+
+The `.claude/skills/` are the single source: active when working in this repo,
+shipped in `heimdall-framework.tar.gz` (the `framework` release job), and copied
+into `<project>/.claude/skills/` by `heimdall new`. To refresh the Odin skill,
+replace `.claude/skills/odin-lang/`; the heimdall skill is authored here.
 
 ## The backend vtable
 

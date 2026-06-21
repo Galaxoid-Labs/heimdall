@@ -174,6 +174,18 @@ cmd_new :: proc(args: []string) {
 		os.exit(1)
 	}
 
+	// Copy the Claude Code skills (heimdall + odin-lang) into ./<name>/.claude/skills
+	// so Claude has Heimdall + Odin knowledge in the new project. The skills live
+	// beside the framework dir (repo root in dev; $HEIMDALL_HOME / the install root
+	// otherwise, where install.sh extracts them from the framework tarball).
+	skills_src, _ := filepath.join({filepath.dir(framework), ".claude", "skills"}, context.temp_allocator)
+	if file_exists(skills_src) {
+		mkdir_p(cat(name, "/.claude")) // copy_directory_all needs the dest's parent to exist
+		if err := os.copy_directory_all(cat(name, "/.claude/skills"), skills_src); err != nil {
+			fmt.eprintfln("heimdall new: note — skills not copied: %v", err)
+		}
+	}
+
 	// Frontend (vanilla writes files; sveltekit delegates to `sv create`).
 	if !fe.scaffold(&ctx) {
 		fmt.eprintfln("heimdall new: created %s/, but the frontend setup did not finish", name)
