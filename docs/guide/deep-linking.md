@@ -67,14 +67,17 @@ installed bundle), so test deep links against an installed/bundled build.
 | --- | --- | --- |
 | **macOS** | ✅ `application:openURLs:` | ✅ same — LaunchServices reuses the instance |
 | **Linux** | ✅ URL via argv | ✅ single-instance forwarding (AF_UNIX socket) |
-| **Windows** | ✅ URL via argv | ⏳ needs single-instance forwarding |
+| **Windows** | ✅ URL via argv | ✅ single-instance forwarding (named mutex + `WM_COPYDATA`) |
 
-macOS and Linux work fully. On **Linux**, when `url_schemes` is set the app is
-single-instance: opening `myapp://…` while it's already running forwards the URL
-to the live window (no second window) — the first instance listens on an
-AF_UNIX socket in `$XDG_RUNTIME_DIR`, a later launch hands it the URL and exits.
-On **Windows**, **cold start works today**, but the "already-running" case
-(forwarding the URL to the live instance instead of launching a second one) still
-needs single-instance IPC — see [internals](../internals.md). Until then, a
-second launch with a URL on Windows starts a new instance that receives the URL
-via argv.
+All three platforms work fully, both cold-start and already-running. When
+`url_schemes` is set the app becomes **single-instance**: opening `myapp://…`
+while it's already running forwards the URL to the live window (no second window)
+and raises it, rather than launching a second copy.
+
+- **macOS** — LaunchServices reuses the live instance for free.
+- **Linux** — the first instance listens on an AF_UNIX socket in
+  `$XDG_RUNTIME_DIR`; a later launch hands it the URL and exits.
+- **Windows** — the first instance owns a named mutex; a later launch finds it,
+  forwards the URL to the primary's window via `WM_COPYDATA`, and exits.
+
+See [internals](../internals.md) for the mechanics.

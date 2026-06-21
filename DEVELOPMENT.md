@@ -45,7 +45,8 @@ JSON artifact to `/tmp`); all pass identically on every platform.
 | 7 | Backend vtable + **native backends** (WKWebView / WebKitGTK / WebView2) | ✅ |
 
 Post-MVP, also done: window-control API + built-in `win` service; native menus;
-deep linking (`myapp://`, cold-start everywhere + macOS already-running); dev
+deep linking (`myapp://`, cold-start everywhere + already-running single-instance
+forwarding on all three platforms); dev
 console toggle (`App_Config.devtools`); `bundle` (macOS `.app` + sign/notarize,
 Linux `.deb`/`.rpm`, Windows Inno installer + `signtool`); one-line installers +
 release workflow; VitePress docs site + branding.
@@ -61,9 +62,6 @@ release workflow; VitePress docs site + branding.
 
 None blocking. In rough priority:
 
-- **Deep-link single-instance forwarding** on Windows/Linux (the "already
-  running" case; macOS is done). Concrete steps: the TODO block atop
-  `heimdall/deeplink.odin`.
 - **Tray** (reuse `tray-odin`) + **native dialogs** (file open/save, message box).
 - `.dmg`, AppImage; auto-updater; multi-window.
 
@@ -103,8 +101,9 @@ Specific deltas to confirm:
 - [ ] **Deep linking (D30):** `[bundle].schemes` registers (Linux `.desktop`
       MimeType + `update-desktop-database`; Windows installer registry). Cold-start
       on a NOT-running *installed* app: `xdg-open myapp://x` / `start myapp://x`
-      fires `on_open_url` + the `open-url` event. Known gap: already-running starts
-      a second instance (single-instance forwarding TODO in `deeplink.odin`).
+      fires `on_open_url` + the `open-url` event. Already-running now forwards to
+      the live instance (single-instance) on all three platforms — verify on an
+      installed build that no second window appears.
 - [ ] **Packaging:** Linux `.deb`/`.rpm` install + launch (scheme works
       post-install); Windows Inno `.exe` + portable `.zip`, `--sign` via signtool.
 - [ ] **Installers:** `install.sh` on Linux (only file://-tested on macOS);

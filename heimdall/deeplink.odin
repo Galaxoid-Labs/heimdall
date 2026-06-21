@@ -13,9 +13,10 @@ import "core:strings"
 //   2. DELIVERY — getting the URL into the running app. macOS receives it via
 //      `application:openURLs:` (cold-start AND already-running, single-instance
 //      free). Windows and Linux receive a cold-start URL as a command-line
-//      argument (argv). The already-running case: Linux is DONE (single-instance
-//      forwarding over an AF_UNIX socket — see backend_linux.odin); Windows still
-//      spawns a second instance. See docs/guide/deep-linking.md.
+//      argument (argv). The already-running case is now handled on all three:
+//      Linux forwards over an AF_UNIX socket (backend_linux.odin); Windows over a
+//      named mutex + WM_COPYDATA (backend_windows.odin). See
+//      docs/guide/deep-linking.md.
 //
 // The app sees a URL two ways (set either or both on App_Config):
 //   * on_open_url(app, url) — an Odin hook, called immediately.
@@ -25,33 +26,29 @@ import "core:strings"
 // it in sync with `[bundle].schemes` (which does the OS registration).
 //
 // ───────────────────────────────────────────────────────────────────────────
-// Single-instance "already-running" forwarding — Linux DONE, Windows TODO
+// Single-instance "already-running" forwarding — DONE on all three platforms
 // ───────────────────────────────────────────────────────────────────────────
-// macOS reuses the live instance for free (LaunchServices). Linux now matches it
-// via single-instance forwarding in backend_linux.odin (an AF_UNIX socket in
+// macOS reuses the live instance for free (LaunchServices). Linux matches it via
+// single-instance forwarding in backend_linux.odin (an AF_UNIX socket in
 // $XDG_RUNTIME_DIR named after the app id: the first instance listens; a later
 // one connects, writes its launch URL, and exits — the primary focuses its
-// window and delivers the URL). Only engaged when App_Config.url_schemes is set.
+// window and delivers the URL). Windows mirrors the same shape in
+// backend_windows.odin (windows_single_instance):
 //
-// Windows still spawns a SECOND instance (which gets the URL via argv and
-// delivers it correctly, but you now have two windows). To finish Windows,
-// mirror the same shape in backend_windows.odin:
+//     1. Become the "primary" by creating a named mutex
+//        ("Global\\heimdall-<app_id>"); GetLastError == ERROR_ALREADY_EXISTS
+//        means a primary is already running.
+//     2. Primary: receives forwarded URLs via WM_COPYDATA in its wndproc →
+//        UTF-8 → re-activates the window → deliver_open_url.
+//     3. Secondary: FindWindowW the primary by its per-app window class,
+//        SendMessageW WM_COPYDATA with the launch URL bytes (from os.args, via
+//        url_matches_scheme), grant it foreground rights, then os.exit(0)
+//        without opening a window.
 //
-//     1. Try to become the "primary" instance:
-//        CreateMutexW("Global\\heimdall-<app_id>") → GetLastError ==
-//        ERROR_ALREADY_EXISTS means a primary is running.
-//     2. If primary: receive forwarded URLs via WM_COPYDATA in the existing
-//        wndproc → UTF-8 → dispatch to the UI thread → deliver_open_url.
-//     3. If NOT primary: FindWindow for the primary's window and SendMessageW
-//        WM_COPYDATA with the launch URL bytes (from os.args, via
-//        url_matches_scheme), then os.exit(0) without opening a window.
-//
-//   Verify with a real bundled/installed build (scheme must be OS-registered):
-//   launch the app, then `start myapp://x` (Win) / `xdg-open myapp://x` (Linux)
-//   → the SAME window receives "open-url", no second instance. (Cold-start +
-//   the macOS path are covered by examples/_probe_deeplink; the Linux
-//   already-running path was verified end-to-end with a primary + forwarded
-//   secondaries.)
+// All three only engage when App_Config.url_schemes is set. Cold-start (every
+// platform) + the macOS already-running path are covered by
+// examples/_probe_deeplink; the Linux and Windows already-running paths were each
+// verified end-to-end with a primary + forwarded secondaries.
 
 // Payload of the "open-url" event. Auto-declared in `create` so it's typed in
 // generated bindings.

@@ -73,13 +73,16 @@ pure Odin + each platform's system webview. Candidate next steps, none blocking:
   All `_probe*` incl. `_probe_window`/`_probe_menu` pass.
 - Tray (reuse `tray-odin`) + native dialogs across all three backends.
 - `.dmg`, AppImage.
-- **Deep-link follow-up:** **Linux single-instance forwarding is now DONE** (the
-  "already-running" case — AF_UNIX socket in `$XDG_RUNTIME_DIR`, primary listens
-  via `g_unix_fd_add`, secondary forwards its launch URL and exits; verified
-  end-to-end with a primary + forwarded secondaries). macOS was already complete;
-  cold-start works on all three. **Windows is the only remaining gap** — mutex +
-  `WM_COPYDATA` forwarding; concrete steps in the `TODO` block at the top of
-  `heimdall/deeplink.odin`. Verify on a real installed build.
+- **Deep-link follow-up — DONE on all three platforms.** The "already-running"
+  case is complete everywhere: macOS via LaunchServices; Linux via an AF_UNIX
+  socket in `$XDG_RUNTIME_DIR` (primary listens via `g_unix_fd_add`, secondary
+  forwards its launch URL and exits); **Windows via a named mutex
+  (`Global\heimdall-<app_id>`) + `WM_COPYDATA`** — `windows_single_instance` in
+  `backend_windows.odin`: the secondary `FindWindowW`s the primary by its per-app
+  window class, forwards the URL, and exits without opening a window; the primary
+  re-activates and delivers `open-url`. Linux and Windows were each verified
+  end-to-end with a primary + forwarded secondaries; cold-start works on all
+  three. (Still worth a final pass on a real OS-registered installed build.)
 
 Done since:
 - Typed **event** payloads — `event(app, name, T)` declares a payload type;
@@ -549,8 +552,6 @@ Platform link deps (checked by `doctor`):
 Remaining (none blocking; the live next-step list is the **PICK UP HERE** section
 above):
 
-- Deep-link single-instance forwarding on Windows (macOS + Linux done;
-  cold-start works everywhere) — steps in `heimdall/deeplink.odin`.
 - Tray (reuse `tray-odin`) + native dialogs.
 - `.dmg`, AppImage; auto-updater; multi-window.
 

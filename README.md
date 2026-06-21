@@ -173,8 +173,8 @@ on("open-url", e => router.navigate(e.url))
 
 Register it with the OS via `[bundle].schemes` in `heimdall.toml`; `heimdall
 bundle` wires up macOS `CFBundleURLTypes`, the Linux `.desktop` handler, and the
-Windows registry. macOS works fully (cold-start + already-running); Windows/Linux
-handle cold-start today (single-instance forwarding is a follow-up). See
+Windows registry. All three platforms handle both cold-start and the
+already-running case (single-instance forwarding to the live instance). See
 [docs/guide/deep-linking.md](docs/guide/deep-linking.md).
 
 ---

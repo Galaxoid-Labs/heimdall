@@ -246,10 +246,16 @@ How a `myapp://…` URL reaches the running app (see the
   just focuses the existing window. A stale socket (after a crash) is detected
   (connect refused) and replaced. Only engaged when `App_Config.url_schemes` is
   set; the socket is unlinked on clean shutdown.
-- **Windows already-running:** still spawns a second instance (which delivers the
-  URL via argv correctly, but you get two windows). The same single-instance
-  shape — named mutex + `WM_COPYDATA` forwarding — is the remaining work; see the
-  TODO in `deeplink.odin`.
+- **Windows already-running (single-instance):** `backend_windows.odin`
+  (`windows_single_instance`) reproduces the same behavior with a **named mutex**
+  (`Global\heimdall-<app_id>`). The first instance creates it and becomes the
+  primary; a later launch sees `ERROR_ALREADY_EXISTS`, `FindWindowW`s the primary
+  by its **per-app window class** (`HeimdallWindowClass-<app_id>`), forwards its
+  launch URL via **`WM_COPYDATA`** (after `AllowSetForegroundWindow` so the primary
+  may raise itself), and `os.exit(0)`s without opening a window. The primary's
+  wndproc receives the `WM_COPYDATA`, restores/foregrounds the window, and calls
+  `deliver_open_url`. Only engaged when `App_Config.url_schemes` is set; the mutex
+  is closed on shutdown.
 - **Frontend timing:** a cold-start URL is known before the page exists, so the
   `open-url` event is queued and flushed when the shim calls the reserved
   `win.__ready` command on `DOMContentLoaded` (after the app's `on(...)` handlers

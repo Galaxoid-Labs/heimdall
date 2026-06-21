@@ -31,6 +31,7 @@ package heimdall
 // Advapi32/Shlwapi are pulled in by core:sys/windows + the shlwapi import below.
 
 import "core:mem"
+import "core:os"
 import "core:strings"
 import win "core:sys/windows"
 
@@ -83,6 +84,23 @@ foreign gdiplus {
 	GdipDisposeImage :: proc(image: rawptr) -> i32 ---
 }
 
+// Named-mutex single-instance lock + cross-process foreground grant for deep-link
+// forwarding (see windows_single_instance). Not bound in core:sys/windows.
+foreign import kernel32_si "system:Kernel32.lib"
+foreign import user32_si "system:User32.lib"
+
+@(default_calling_convention = "system")
+foreign kernel32_si {
+	CreateMutexW :: proc(lpMutexAttributes: rawptr, bInitialOwner: win.BOOL, lpName: win.wstring) -> win.HANDLE ---
+}
+
+@(default_calling_convention = "system")
+foreign user32_si {
+	// Permit the process that owns `dwProcessId` to call SetForegroundWindow next —
+	// the secondary grants the primary the right before forwarding the URL.
+	AllowSetForegroundWindow :: proc(dwProcessId: win.DWORD) -> win.BOOL ---
+}
+
 @(private = "file")
 ICON_SMALL :: 0
 @(private = "file")
@@ -94,6 +112,12 @@ ICON_BIG :: 1
 WM_APP_DISPATCH :: win.WM_APP + 1 // boxed UI-thread task in lParam
 @(private = "file")
 WM_APP_QUIT :: win.WM_APP + 2 // programmatic close (terminate / window_op Close)
+
+// COPYDATASTRUCT.dwData tag identifying a forwarded deep-link URL (a secondary
+// instance → the primary's wndproc). Arbitrary sentinel, just has to be unique
+// among any WM_COPYDATA we might receive.
+@(private = "file")
+CDS_DEEPLINK: win.ULONG_PTR : 0x6864_0001 // 'hd', 1
 
 @(private = "file")
 MF_GRAYED: win.UINT : 0x00000001
@@ -539,6 +563,10 @@ Windows_Backend :: struct {
 	debug:        bool, // dev build — enables WebView2 DevTools
 	// window icon (decoded from App_Config.icon PNG bytes)
 	hicon:        win.HICON,
+	// single-instance deep-link lock (only when url_schemes is set): the primary
+	// holds this named mutex; a secondary forwards its URL and exits. nil when not
+	// the primary / not enabled. Closed at destroy.
+	mutex:        win.HANDLE,
 	// menu
 	accel:        win.HACCEL,
 	menu_cmds:    [dynamic]Menu_Cmd,
@@ -576,7 +604,18 @@ windows_backend_create :: proc(app: ^App, debug: bool) -> bool {
 
 	w.hinstance = win.HINSTANCE(win.GetModuleHandleW(nil))
 
-	class_name := win.utf8_to_wstring("HeimdallWindowClass", context.temp_allocator)
+	// Single-instance deep-link forwarding (parity with macOS LaunchServices / the
+	// Linux AF_UNIX socket): if a primary instance is already running, hand it our
+	// launch URL and exit before opening a second window. Only engaged when the app
+	// declares url_schemes.
+	if !windows_single_instance(w) {
+		os.exit(0)
+	}
+
+	// Per-app window class name so a secondary can FindWindowW the *right* primary
+	// (the named mutex is per-app too; a fixed class would collide across heimdall
+	// apps).
+	class_name := win.utf8_to_wstring(windows_class_name(w.app), context.temp_allocator)
 	wc := win.WNDCLASSEXW {
 		cbSize        = size_of(win.WNDCLASSEXW),
 		style         = win.CS_HREDRAW | win.CS_VREDRAW,
@@ -722,6 +761,73 @@ windows_user_data_folder :: proc() -> win.wstring {
 	base := win.wstring_to_utf8(transmute(win.wstring)raw_data(buf), -1, context.temp_allocator) or_else ""
 	if base == "" {return nil}
 	return win.utf8_to_wstring(strings.concatenate({base, "\\heimdall"}, context.temp_allocator), context.temp_allocator)
+}
+
+// ---- single-instance deep-link forwarding ---------------------------------
+//
+// Windows/Linux deliver a deep link as a launch argument, so opening myapp://…
+// while the app already runs would otherwise spawn a SECOND window. macOS gets
+// single-instance free from LaunchServices; Linux reproduces it with an AF_UNIX
+// socket. Here we use the Win32 equivalents:
+//
+//   * The first instance creates a named mutex ("Global\heimdall-<app_id>") and
+//     becomes the primary; it receives forwarded URLs via WM_COPYDATA in its
+//     wndproc, re-activates its window, and delivers them like any other open-url.
+//   * A later launch finds the mutex already exists, locates the primary's window
+//     by its per-app class name, forwards its launch URL via WM_COPYDATA (granting
+//     the primary foreground rights first), and exits without opening a window.
+//
+// Only engaged when the app declares url_schemes (deep links are the whole point
+// of single-instance here). Returns false when this process is a secondary that
+// has forwarded and should exit.
+
+// Per-app window class name — pairs with the per-app mutex so the secondary's
+// FindWindowW targets the right primary even with several heimdall apps running.
+@(private = "file")
+windows_class_name :: proc(app: ^App) -> string {
+	id := app_identifier(app, context.temp_allocator)
+	return strings.concatenate({"HeimdallWindowClass-", id}, context.temp_allocator)
+}
+
+// This process's launch deep-link URL (first argv entry matching a scheme), or "".
+@(private = "file")
+windows_launch_url :: proc(app: ^App) -> string {
+	if len(os.args) < 2 {return ""}
+	for arg in os.args[1:] {
+		if url_matches_scheme(app, arg) {return arg}
+	}
+	return ""
+}
+
+@(private = "file")
+windows_single_instance :: proc(w: ^Windows_Backend) -> (primary: bool) {
+	app := w.app
+	if len(app.cfg.url_schemes) == 0 {
+		return true // no deep-link schemes → single-instance not needed
+	}
+
+	name := strings.concatenate({"Global\\heimdall-", app_identifier(app, context.temp_allocator)}, context.temp_allocator)
+	w.mutex = CreateMutexW(nil, win.FALSE, wstr(name))
+	if win.GetLastError() != win.ERROR_ALREADY_EXISTS {
+		return true // we are the primary (or the mutex call failed → just run normally)
+	}
+
+	// A primary is already running. Find its window and forward our launch URL.
+	hwnd := win.FindWindowW(wstr(windows_class_name(app)), nil)
+	if hwnd != nil {
+		pid: win.DWORD
+		win.GetWindowThreadProcessId(hwnd, &pid)
+		AllowSetForegroundWindow(pid) // let the primary raise itself on receipt
+		url := windows_launch_url(app)
+		cds := win.COPYDATASTRUCT {
+			dwData = CDS_DEEPLINK,
+			cbData = win.DWORD(len(url)),
+			lpData = raw_data(transmute([]byte)url) if len(url) > 0 else nil,
+		}
+		win.SendMessageW(hwnd, win.WM_COPYDATA, 0, win.LPARAM(uintptr(&cds)))
+	}
+	if w.mutex != nil {win.CloseHandle(w.mutex)} // we're exiting; don't hold the handle open
+	return false
 }
 
 // ---- theme (modern title bar) ---------------------------------------------
@@ -1133,6 +1239,23 @@ win_wndproc :: proc "system" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM,
 			context = w.app.ctx
 			windows_apply_theme(hwnd)
 		}
+	case win.WM_COPYDATA:
+		// A secondary instance forwarded a deep-link URL (single-instance, above).
+		// Windows copies the payload into our address space for the duration of this
+		// synchronous call, so consume it now: re-activate the window and deliver.
+		if w != nil {
+			cds := cast(^win.COPYDATASTRUCT)rawptr(uintptr(lparam))
+			if cds != nil && cds.dwData == CDS_DEEPLINK {
+				context = w.app.ctx
+				if win.IsIconic(hwnd) {win.ShowWindow(hwnd, win.SW_RESTORE)}
+				win.SetForegroundWindow(hwnd)
+				if cds.cbData > 0 && cds.lpData != nil {
+					url := string((cast([^]byte)cds.lpData)[:cds.cbData])
+					deliver_open_url(w.app, url)
+				}
+				return 1 // TRUE — processed
+			}
+		}
 	case win.WM_CLOSE:
 		if w != nil {
 			context = w.app.ctx
@@ -1515,6 +1638,7 @@ win_terminate :: proc(app: ^App) {
 @(private = "file")
 win_destroy :: proc(app: ^App) {
 	w := self_win(app)
+	if w.mutex != nil {win.CloseHandle(w.mutex)} // release the single-instance lock
 	if w.accel != nil {win.DestroyAcceleratorTable(w.accel)}
 	if w.hicon != nil {win.DestroyIcon(w.hicon)}
 	if w.controller != nil {

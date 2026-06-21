@@ -706,7 +706,10 @@ the Inno installer (cmd_bundle_windows).
   the NSApp delegate). Cold-start AND already-running, single-instance free.
 - Windows/Linux: cold-start URL via argv (`deliver_launch_url` scans `os.args`).
   The **already-running** case (forward to the live instance) needs
-  single-instance IPC — deferred (user chose: ship the 80%, note clearly).
+  single-instance IPC — **now done on both** (was deferred): Linux via an AF_UNIX
+  socket (`backend_linux.odin`), Windows via a named mutex + `WM_COPYDATA`
+  (`backend_windows.odin`, `windows_single_instance`). All three platforms now
+  forward to the live instance instead of opening a second window.
 
 **Cold-start race fix:** a launch URL exists before the page does, so the
 `open-url` event is queued (`app.pending_urls`) and flushed when the shim calls a
