@@ -103,39 +103,21 @@ lock it down while developing.
 
 `--frontend` selects the scaffold:
 
-- **`vanilla`** (default) — a dependency-free, Bun-served static frontend. No
-  `node_modules`, works offline, instant. Great for small apps or as a starting
-  point. (`dev` uses a tiny Bun static server; there's no HMR — refresh to see
-  changes.)
-- **`alpine`** — the same dependency-free, no-bundler setup as `vanilla`, plus
-  [Alpine.js](https://alpinejs.dev) for lightweight reactivity (`x-data`,
-  `x-model`, …). Alpine is **vendored** into `web/src/vendor/` (a pinned, minified
-  build), so the app stays offline and `node_modules`-free; the scaffold includes
-  an `x-data` demo wired to an Odin command through the typed client. Same
-  refresh-to-reload dev loop as `vanilla`.
-- **`sveltekit`** — delegates to the official [`sv create`](https://svelte.dev/docs/cli):
-  you pick the template and TypeScript/JSDoc interactively, and heimdall configures
-  it for static embedding (`@sveltejs/adapter-static`, `ssr = false`, an
-  `index.html` SPA fallback) and points `heimdall.toml` at `web/build`. You get
-  full **Vite HMR** in `heimdall dev`. Options:
-  - `--pm bun|npm|pnpm|yarn|deno` — package manager (default `bun`).
-  - `--add <sv-addon>` (repeatable) — Svelte add-ons (Tailwind, Prettier, …), e.g.
-    `--add tailwindcss=plugins:typography --add eslint`. heimdall adds the static
-    adapter automatically — **don't add `sveltekit-adapter` yourself** (it must be
-    configured during create, which heimdall handles).
+| `--frontend` | What you get |
+| --- | --- |
+| `vanilla` *(default)* | dependency-free static files, no bundler, offline |
+| `alpine` | same, plus vendored [Alpine.js](https://alpinejs.dev) for lightweight reactivity |
+| `sveltekit` | official `sv create`, wired for static embedding, full Vite HMR |
 
-  The typed client lands at `web/src/lib/heimdall.gen` — import it via
-  `import { greeting } from "$lib/heimdall.gen.js"`.
+```sh
+heimdall new myapp                          # vanilla
+heimdall new myapp --frontend alpine        # Alpine.js
+heimdall new myapp --frontend sveltekit     # SvelteKit (interactive)
+```
 
-  > heimdall must set the adapter **during** `sv create` (passing it via `--add`),
-  > because adding it afterward leaves the project in a state that breaks Tailwind's
-  > dev server. A side effect: the interactive add-on *menu* is skipped, so request
-  > add-ons with heimdall's `--add` flag instead.
-
-Because the app ships as static files inside the binary, SSR-only SvelteKit
-features (server `load`, form actions) don't apply — it builds as a client SPA.
-(With the **demo** template you'll see a harmless `Overwriting index.html` notice,
-and its `sverdle` game's server actions won't function — but it builds and runs.)
+Not married to these — Heimdall is bring-your-own-frontend, so React, Vue, Solid,
+or any bundler works too. See the **[Frontends guide](./frontends.md)** for the full
+rundown of each scaffold and how to bring your own.
 
 ## Project structure
 

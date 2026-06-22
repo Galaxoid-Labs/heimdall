@@ -279,6 +279,7 @@ Full breakdown, repo layout, and how the tests work:
 Full docs live in **[`docs/`](docs/guide/getting-started.md)** (a
 [VitePress](https://vitepress.dev) site — `bun install && bun run docs:dev`):
 [Getting Started](docs/guide/getting-started.md) ·
+[Frontends](docs/guide/frontends.md) ·
 [Commands](docs/guide/commands.md) ·
 [Events](docs/guide/events.md) ·
 [Window](docs/guide/window.md) ·

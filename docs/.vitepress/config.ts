@@ -37,6 +37,7 @@ export default defineConfig({
           items: [
             { text: 'Introduction', link: '/guide/introduction' },
             { text: 'Getting Started', link: '/guide/getting-started' },
+            { text: 'Frontends', link: '/guide/frontends' },
             { text: 'Commands', link: '/guide/commands' },
             { text: 'Events', link: '/guide/events' },
             { text: 'Window', link: '/guide/window' },

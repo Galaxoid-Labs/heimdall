@@ -1,0 +1,6 @@
+# heimdall environment. Added by install.sh.
+export HEIMDALL_HOME="/Users/jdavis/Development/heimdall"
+case ":$PATH:" in
+  *":/Users/jdavis/Development/heimdall/bin:"*) ;;
+  *) export PATH="/Users/jdavis/Development/heimdall/bin:$PATH" ;;
+esac
