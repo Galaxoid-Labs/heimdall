@@ -54,6 +54,71 @@ plus `[bundle.macos]` `min_macos` / `category`.
 **`[sign]`** — `identity`, `entitlements`, `notary_profile` (typically under
 `[sign.macos]`).
 
+## Graphics (WebGL / WebGPU)
+
+These are runtime settings on `App_Config` (in `main.odin`), not `heimdall.toml`
+keys — Heimdall just uses each platform's system webview, so what's available
+depends on the engine.
+
+- **WebGL (1 and 2)** is always on — no setting needed. It's mature in WKWebView,
+  WebKitGTK, and WebView2. (It still needs a working GPU/GL driver on the machine,
+  which matters most on Linux and in headless/VM environments.)
+- **WebGPU** is **opt-in** and engine-dependent. Set `webgpu = true`:
+
+```odin
+app, _ := hd.create(hd.App_Config{
+    title  = "My App",
+    webgpu = true,   // enable WebGPU where the system webview supports it
+})
+```
+
+What `webgpu = true` does per platform:
+
+| Platform | Effect |
+| --- | --- |
+| **Windows** (WebView2 / Chromium) | passes `--enable-unsafe-webgpu`; works on a recent Evergreen runtime |
+| **macOS** (WKWebView) | flips the WebKit "WebGPU" feature flag; recent WebKit (Safari 26+) already enables it by default |
+| **Linux** (WebKitGTK) | enables the experimental "WebGPU" feature if the installed WebKitGTK build exposes it — otherwise a no-op |
+
+It's a safe flag to set, but don't treat WebGPU as a dependable cross-platform
+baseline yet (Windows is solid; macOS depends on the OS version; Linux is
+experimental). Feature-detect with `navigator.gpu` and keep a WebGL fallback —
+which most WebGPU libraries do anyway.
+
+## Content Security Policy (CSP)
+
+Heimdall sets **no CSP of its own** — your frontend owns it (a
+`<meta http-equiv="Content-Security-Policy">` tag, or your bundler). You can ship
+a strict policy without breaking the bridge.
+
+**The bridge is CSP-safe.** A tight CSP (even `script-src 'self'`, no inline)
+won't break `invoke`/`on`:
+
+- the JS shim is **injected by the native host** (not a page script), so it runs
+  outside `script-src` enforcement;
+- Odin→JS replies/events use **host-initiated evaluation** (like the devtools
+  console), which the page CSP doesn't gate;
+- the bridge talks over `postMessage`, not `fetch`, so `connect-src` doesn't
+  apply to it.
+
+**What your CSP still has to allow** (your app's own resources):
+
+- **Embedded assets** load from `app://localhost/` in prod — `default-src 'self'`
+  covers them (same origin); name the `app:` scheme explicitly only if you
+  hardcode it.
+- **WebAssembly** (common in WebGPU/graphics stacks) needs
+  `script-src 'wasm-unsafe-eval'` under a strict policy. WGSL shaders themselves
+  aren't CSP-gated. This is the most common gotcha.
+- **Dev mode** is looser than prod: the bundler serves over
+  `http://localhost:<port>` with HMR websockets and often inline scripts. Keep a
+  relaxed CSP for `heimdall dev` (e.g. allow `ws://localhost:*` in `connect-src`)
+  and a strict one for release.
+
+**Secure context.** `navigator.gpu`, `crypto.subtle`, and service workers require
+a [secure context](https://developer.mozilla.org/docs/Web/Security/Secure_Contexts).
+Heimdall registers `app://` as **secure + CORS-enabled**, so your embedded app is
+a secure origin and `fetch()` to `app://` won't trip CORS.
+
 ## Secrets
 
 Secrets never go in the file. The signing identity and notarization credentials

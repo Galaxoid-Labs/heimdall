@@ -74,6 +74,28 @@ backend.
   `webkit_settings_set_enable_developer_extras`; Windows
   `ICoreWebView2Settings.AreDevToolsEnabled`. All three receive the resolved
   on/off bool from `create` (Auto = on in dev / off in release).
+- **Webview lives in a container NSView — do NOT set it as the window's
+  `contentView` directly.** When the Web Inspector is docked, WebKit reparents and
+  wraps the content view; if that's the raw `WKWebView`, the title-bar inset is
+  lost — the traffic lights get covered and stop responding. So we install a plain
+  container `NSView` as the content view and add the webview as an autoresizing
+  subview. (This is also what lets `App_Config.titlebar = .Transparent` extend
+  content under the title bar cleanly.) Don't "simplify" this back.
+- **Dock-icon reopen:** `NSApplicationDelegate
+  applicationShouldHandleReopen:hasVisibleWindows:` (same shared handler object)
+  deminiaturizes + refocuses the window, so clicking the Dock icon restores a
+  minimized window — AppKit won't do it for a custom-managed window on its own.
+  Note: reopen events are delivered by LaunchServices, so this fires for a bundled
+  `.app`; a bare `heimdall dev` binary may not get it.
+- **Title bar (`App_Config.titlebar`):** `.Transparent` adds
+  `NSWindowStyleMaskFullSizeContentView` + `titlebarAppearsTransparent = YES`
+  (title text + traffic lights kept, top strip stays natively draggable). There is
+  deliberately no fully-chrome-less style — WKWebView has no `-webkit-app-region`
+  and we expose no drag hook, so a frameless window would be un-draggable.
+- **WebGPU (`App_Config.webgpu`):** enabled by flipping the private `WKPreferences`
+  "WebGPU" feature via `_features` + `_setEnabled:forFeature:`, guarded by
+  `respondsToSelector:` (safe no-op where absent). Recent WebKit enables it by
+  default. Needs a secure context — `app://` should report `isSecureContext`.
 
 ## Linux — GTK4 + libadwaita + WebKitGTK (`foreign import` C / GObject) — IMPLEMENTED
 
@@ -124,6 +146,11 @@ follow the system light/dark preference automatically (AdwStyleManager), so the
 - Runtime deps: a shipped app dynamically links the GTK4 WebKit stack, so end
   users need the **runtime** libs (`webkitgtk-6.0`, GTK4, libadwaita) — not the
   `-devel` packages. This is the Tauri model (the webview engine is a system lib).
+- WebGPU (`App_Config.webgpu`): enabled via the WebKitGTK runtime feature API —
+  `webkit_settings_get_all_features()`, match a feature whose
+  `webkit_feature_get_identifier` is `"WebGPU"`, then
+  `webkit_settings_set_feature_enabled(settings, feature, TRUE)`. No-op if the
+  installed build doesn't expose it (experimental). **Untested** — verify on Linux.
 - Verify: `odin build examples/_probe -collection:src=.` (native is the default)
   → `/tmp/heimdall_probe.json`. All `_probe*` pass exactly like macOS, including
   `app://` origin, threaded events, `should_quit`, zero leaks, and the menu
@@ -200,6 +227,13 @@ round-trip).
   (rounded) and `DWMWA_USE_IMMERSIVE_DARK_MODE` driven by the system
   `AppsUseLightTheme` setting, re-applied on `WM_SETTINGCHANGE` so it tracks live
   theme switches — the Windows analogue of libadwaita's `AdwStyleManager`.
+  (`App_Config.titlebar` is macOS-only and ignored here — Windows keeps this native
+  bar.)
+- **WebGPU (`App_Config.webgpu`):** Chromium gates it behind a flag, so the
+  environment-options `get_AdditionalBrowserArguments` getter returns
+  `--enable-unsafe-webgpu` when set (a dedicated `get_browser_args`, split from the
+  shared empty-string getter so it doesn't also affect `get_Language`). Works on a
+  recent Evergreen runtime. **Untested** — verify on Windows.
 - **Window icon:** `App_Config.icon` (PNG bytes) is decoded at runtime via GDI+
   (`GdipCreateBitmapFromStream` over an `SHCreateMemStream` of the bytes →
   `GdipCreateHICONFromBitmap`) and set as the small + large window icon

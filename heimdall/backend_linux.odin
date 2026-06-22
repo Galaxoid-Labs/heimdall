@@ -158,6 +158,13 @@ foreign gtk {
 	webkit_web_view_get_user_content_manager :: proc(webview: rawptr) -> rawptr ---
 	webkit_web_view_get_settings :: proc(webview: rawptr) -> rawptr ---
 	webkit_settings_set_enable_developer_extras :: proc(settings: rawptr, enabled: c.int) ---
+	// Runtime feature API (WebKitGTK 2.42+/6.0) — used to flip the experimental
+	// "WebGPU" feature when App_Config.webgpu is set.
+	webkit_settings_get_all_features :: proc() -> rawptr ---
+	webkit_feature_list_get_length :: proc(list: rawptr) -> c.size_t ---
+	webkit_feature_list_get :: proc(list: rawptr, index: c.size_t) -> rawptr ---
+	webkit_feature_get_identifier :: proc(feature: rawptr) -> cstring ---
+	webkit_settings_set_feature_enabled :: proc(settings: rawptr, feature: rawptr, enabled: c.int) ---
 	webkit_web_view_load_uri :: proc(webview: rawptr, uri: cstring) ---
 	webkit_web_view_load_html :: proc(webview: rawptr, content: cstring, base_uri: cstring) ---
 	webkit_web_view_evaluate_javascript :: proc(webview: rawptr, script: cstring, length: int, world_name: cstring, source_uri: cstring, cancellable: rawptr, callback: rawptr, user_data: rawptr) ---
@@ -264,6 +271,24 @@ linux_backend_create :: proc(app: ^App, debug: bool) -> bool {
 
 	if debug {
 		webkit_settings_set_enable_developer_extras(webkit_web_view_get_settings(lin.webview), 1)
+	}
+
+	// WebGPU (App_Config.webgpu) — experimental in WebKitGTK. Enable it through the
+	// runtime feature API if a "WebGPU" feature exists in this build (best-effort;
+	// a no-op where the feature is absent). WebGL is always on.
+	if app.cfg.webgpu {
+		settings := webkit_web_view_get_settings(lin.webview)
+		feats := webkit_settings_get_all_features()
+		if feats != nil {
+			n := webkit_feature_list_get_length(feats)
+			for i: c.size_t = 0; i < n; i += 1 {
+				f := webkit_feature_list_get(feats, i)
+				ident := webkit_feature_get_identifier(f)
+				if ident != nil && string(ident) == "WebGPU" {
+					webkit_settings_set_feature_enabled(settings, f, 1)
+				}
+			}
+		}
 	}
 
 	// Layout. With a menu, stack [menubar | webview] in a vertical box; otherwise

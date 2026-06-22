@@ -488,7 +488,7 @@ g_options_vtbl := Options_Vtbl {
 	opts_qi,
 	com_addref_self,
 	com_release_self,
-	opt_get_str, // get_AdditionalBrowserArguments (empty default, like WRL)
+	get_browser_args, // get_AdditionalBrowserArguments (WebGPU opt-in)
 	opt_set_str,
 	opt_get_str, // get_Language (empty default)
 	opt_set_str,
@@ -946,6 +946,18 @@ com_release_self :: proc "system" (this: ^Com_Base) -> u32 {return 1}
 opt_get_str :: proc "system" (this: ^Com_Base, value: ^win.LPWSTR) -> win.HRESULT {
 	context = g_win.app.ctx
 	if value != nil {value^ = co_wstr("")}
+	return HR_S_OK
+}
+
+// AdditionalBrowserArguments: WebGPU is opt-in (App_Config.webgpu). Chromium
+// gates it behind --enable-unsafe-webgpu; empty otherwise (WebGL is always on).
+@(private = "file")
+get_browser_args :: proc "system" (this: ^Com_Base, value: ^win.LPWSTR) -> win.HRESULT {
+	context = g_win.app.ctx
+	if value != nil {
+		args := "--enable-unsafe-webgpu" if g_win.app.cfg.webgpu else ""
+		value^ = co_wstr(args)
+	}
 	return HR_S_OK
 }
 @(private = "file")

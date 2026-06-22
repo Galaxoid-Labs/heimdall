@@ -983,3 +983,94 @@ existence) and cleanup is left to the OS temp dir so the parallel runner can't
 race a delete against another test's check. Only the host OS's `base_dir` branch
 compiles per platform — Linux/Windows branches flagged for on-platform check in
 DEVELOPMENT.md.
+
+## D43 — WebGPU opt-in via `App_Config.webgpu` (not a build define)
+
+**Decided:** Expose WebGPU as a runtime `App_Config.webgpu: bool` field (default
+false), wired into all three native backends, rather than a `-define:` flag. WebGL
+stays always-on (every engine supports it; no toggle). Per backend when `webgpu`
+is set:
+- **Windows** (WebView2/Chromium): `get_AdditionalBrowserArguments` returns
+  `--enable-unsafe-webgpu` (a dedicated getter `get_browser_args`, split out from
+  the shared empty-string `opt_get_str` so it doesn't also affect `get_Language`).
+- **macOS** (WKWebView): enables the private WKPreferences "WebGPU" feature via
+  `_features` + `_setEnabled:forFeature:`, guarded by `respondsToSelector:` so it's
+  a safe no-op where absent. Safari 26+ already enables WebGPU by default.
+- **Linux** (WebKitGTK): enables the experimental "WebGPU" runtime feature via
+  `webkit_settings_get_all_features` → match identifier → `set_feature_enabled`;
+  no-op if the build doesn't expose it.
+
+**Why a runtime field, not a define:** the user asked for it on "the app thing"
+(`App_Config`), which matches `devtools`/`resizable`/etc. — discoverable, no
+rebuild-with-define, and the backends already read `app.cfg` at create time. A
+compile-time define would be less ergonomic and inconsistent with the rest of the
+config surface.
+
+**Why opt-in + caveated:** WebGPU is only solid on Windows; macOS is
+OS-version-dependent and Linux/WebKitGTK is experimental. So it's off by default,
+documented with a per-platform table (`docs/guide/configuration.md`), and the
+guidance is to feature-detect `navigator.gpu` with a WebGL fallback. The flag just
+turns the engine hook on where it exists.
+
+**Untested across platforms:** only the macOS backend compiles on the dev machine;
+the Linux/Windows feature-flag paths (private/foreign APIs, the exact "WebGPU"
+identifier string) are written blind and flagged for on-platform verification in
+DEVELOPMENT.md.
+
+## D44 — `--frontend alpine` (vendored, dependency-free)
+
+**Decided:** Add an `alpine` frontend option alongside `vanilla`/`sveltekit`. It's
+modeled on `vanilla` (same no-bundler `dev.js`/`build.js`/`package.json`, copy-only
+build, `deps = false`) plus [Alpine.js](https://alpinejs.dev) for lightweight
+reactivity. Alpine's pinned minified **CDN build** (v3.15.12) is **vendored**:
+committed at `cli/vendor/alpine.min.js`, `#load`-embedded into the CLI binary
+(like `icon.png`), and written verbatim into the scaffold's `web/src/vendor/`.
+
+**Why vendor the CDN build (not `import Alpine from "alpinejs"` + a bundler):**
+Heimdall apps embed everything and run offline, so a CDN `<script>` is out, and the
+vanilla `build.js` only *copies* `web/src/` — it doesn't bundle bare imports. The
+self-initializing CDN build is the only form that works dropped-in with no
+bundler. Result: `--frontend alpine` stays dependency-free, `node_modules`-free,
+and fully offline — matching *why* Alpine is appealing. The demo `index.html` uses
+`x-data`/`x-model`/`@click`; `main.js` registers an `Alpine.data` component on
+`alpine:init` that calls an Odin command through the typed client. Load order is
+safe: both deferred scripts run before `DOMContentLoaded` (when Alpine starts), so
+`main.js` registers its component before Alpine initializes.
+
+**Maintenance:** bump by replacing `cli/vendor/alpine.min.js` (keep the MIT
+attribution header). Alpine is MIT; noted in README's license section.
+
+**Adding a frontend is cheap by design:** one `FRONTENDS` entry + a `scaffold_*`
+proc + templates; all the shared work (framework vendoring, typed client, CI,
+`heimdall.toml`, icon) is frontend-agnostic in `cmd_new`.
+
+## D45 — macOS title-bar style via `App_Config.titlebar`
+
+**Decided:** Add a `Titlebar :: enum { Default, Transparent }` and an
+`App_Config.titlebar` field. `.Transparent` adds
+`NSWindowStyleMaskFullSizeContentView` to the window style mask and sets
+`titlebarAppearsTransparent = YES`, so the web content fills the window including
+behind the title bar and tints through the top; the traffic lights float over it.
+`.Default` (zero value) is the standard title bar, so existing apps are unchanged.
+
+**No fully-chrome-less option (dropped a considered `.Hidden`):** an earlier draft
+had a `.Hidden` that also set `titleVisibility = NSWindowTitleHidden` for full
+custom chrome. Removed before shipping — `.Transparent` deliberately **keeps the
+title text + traffic lights + the natively-draggable title-bar strip**, so the user
+never has to implement window dragging. Heimdall has no drag hook and WKWebView
+doesn't honor `-webkit-app-region: drag`, so a chrome-less style would have shipped
+un-draggable. Keeping chrome also degrades gracefully cross-platform (Win/Linux just
+show their native bar) instead of inviting a custom header that only exists on macOS.
+
+**macOS only for now:** the field is read only by `backend_darwin.odin`;
+Linux/Windows ignore it (documented). The enum/field are named generically
+(`titlebar`, not `mac_titlebar`) to leave room to map it onto Windows 11 / GTK CSD
+later without a rename.
+
+**Composes with the container-view fix:** the webview already lives inside a
+container NSView (the docked-inspector fix), which fills the full-size content
+view cleanly — no extra work for the transparent styles.
+
+**Docs note the gotcha:** with transparent/hidden, the app must leave room
+top-left for the traffic lights and mark its own header `-webkit-app-region: drag`
+(it's now drawing the chrome). See `docs/guide/window.md`.

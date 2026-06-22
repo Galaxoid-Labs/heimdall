@@ -39,6 +39,18 @@ Devtools :: enum {
 	Off,
 }
 
+// Titlebar selects the window title-bar style. **macOS only** today (Linux/Windows
+// ignore it). `.Default` is the standard title bar. `.Transparent` makes the title
+// bar transparent and extends the web content under it (full-size content view), so
+// your content tints through the top — the traffic lights float over it, so leave
+// room top-left. The title text and the natively-draggable title-bar strip are kept
+// (the chrome is never fully removed), so you don't have to implement window
+// dragging yourself.
+Titlebar :: enum {
+	Default = 0, // standard title bar
+	Transparent, // transparent title bar; content fills behind it; title + traffic lights kept
+}
+
 // App_Config is the user-facing configuration passed to `create`. Lifecycle
 // hooks are all optional (nil == skip).
 App_Config :: struct {
@@ -47,6 +59,8 @@ App_Config :: struct {
 	width, height: int,
 	resizable:     bool,
 	devtools:      Devtools,           // web inspector: Auto (dev on/release off), On, or Off
+	webgpu:        bool,               // opt into WebGPU where the system webview supports it (WebGL is always on); see docs/guide/configuration.md
+	titlebar:      Titlebar,           // macOS title-bar style: Default | Transparent (see Titlebar; macOS only)
 	dev_url:       string,             // dev builds point the webview here (bundler HMR)
 	icon:          []u8,               // embedded PNG — macOS Dock icon + Windows title-bar/taskbar icon at runtime; Linux/GTK4 has no per-window raw-bytes icon, so installed apps get it from the bundle's .desktop instead
 	assets:        map[string]Asset,   // prod builds serve these (from `embed`)

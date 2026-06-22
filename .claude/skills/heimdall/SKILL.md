@@ -87,6 +87,8 @@ hd.create(hd.App_Config{
     assets  = ASSETS,                    // embedded by `heimdall build` (from `embed`)
     icon    = #load("icon.png"),
     devtools = .Auto,                    // .Auto (dev on/release off) | .On | .Off
+    webgpu = false,                      // opt into WebGPU where supported (WebGL is always on)
+    titlebar = .Default,                 // macOS title bar: .Default | .Transparent (content tints behind; chrome kept)
     menu = { ... },                      // native menu bar (see Menus)
     url_schemes = {"myapp"},             // deep-link schemes (see Deep linking)
     on_open_url = proc(app: ^hd.App, url: string) { ... },
@@ -147,7 +149,7 @@ forwards to the live window instead of opening another).
 
 | Command | Does |
 | --- | --- |
-| `heimdall new <name>` | Scaffold (`--frontend vanilla\|sveltekit`, `--pm …`). |
+| `heimdall new <name>` | Scaffold (`--frontend vanilla\|alpine\|sveltekit`, `--pm …`). |
 | `heimdall dev` | Frontend dev server + app; rebuild on change. |
 | `heimdall build` | Frontend build → embed → compile a release binary. |
 | `heimdall bundle` | Package: macOS `.app`, Linux `.deb`/`.rpm`, Windows installer. `--sign`/`--adhoc`/`--notarize`. |
@@ -173,6 +175,11 @@ Optional. Top-level: `name`, `web_dir`, `dist_dir`, `dev_cmd`, `build_cmd`,
   literals, JSON) as a format arg; use token replacement or `strings.write_string`.
 - **Worker threads:** never `eval`/resolve/emit off the UI thread without
   `hd.dispatch_main` (`emit` already hops for you).
+- **CSP:** Heimdall sets none — the frontend owns it. The bridge is CSP-safe (the
+  shim is host-injected; replies use host-initiated eval), so strict policies don't
+  break `invoke`/`on`. But a WASM/WebGPU frontend needs `script-src 'wasm-unsafe-eval'`,
+  and `app://` is a secure origin (so `navigator.gpu`/`crypto.subtle` work). See
+  `docs/guide/configuration.md`.
 
 ## Docs
 

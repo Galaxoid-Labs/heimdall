@@ -21,8 +21,10 @@ heimdall <command> [args]
 
 ### `new`
 
-- `--frontend <vanilla|sveltekit>` — which frontend to scaffold (default
-  `vanilla`). `vanilla` is dependency-free and Bun-served; `sveltekit` delegates
+- `--frontend <vanilla|alpine|sveltekit>` — which frontend to scaffold (default
+  `vanilla`). `vanilla` is dependency-free and Bun-served; `alpine` is the same
+  but vendors [Alpine.js](https://alpinejs.dev) into `web/src/vendor/` for
+  lightweight reactivity (still dependency-free + offline); `sveltekit` delegates
   to the official `sv create` (interactive) and then wires it for static
   embedding (`adapter-static`, `ssr = false`, an `index.html` SPA fallback, `dist_dir =
   web/build`).

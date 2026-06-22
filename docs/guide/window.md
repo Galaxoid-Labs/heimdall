@@ -69,6 +69,37 @@ Commands: `minimize`, `maximize`, `unmaximize`, `show`, `hide`, `focus`, `center
 > `win` is a **reserved** service name — don't register your own service called
 > `win`.
 
+## Title bar (macOS)
+
+Choose the macOS title-bar style with `App_Config.titlebar`:
+
+```odin
+app, _ := hd.create(hd.App_Config{
+    title    = "My App",
+    titlebar = .Transparent,   // .Default | .Transparent
+})
+```
+
+- **`.Default`** — the standard macOS title bar.
+- **`.Transparent`** — a transparent title bar with a **full-size content view**, so
+  your web content fills the whole window and tints through the top. The title text
+  and traffic lights stay — the chrome is never fully removed.
+
+With `.Transparent`, the traffic lights **float over your content**, so leave clear
+space in the **top-left** for them (≈ the first 78 px wide, 28 px tall).
+
+**Dragging just works.** Because the title bar is kept (just transparent), its strip
+at the top of the window stays **natively draggable** — you don't implement window
+dragging yourself. (That's deliberate: there's no fully-chrome-less style, so you
+never end up needing a drag hook that doesn't exist — WKWebView doesn't honor
+`-webkit-app-region: drag`.)
+
+> **macOS only.** `titlebar` is ignored on Linux and Windows today (they keep their
+> native title bars). macOS gets the transparent look almost for free; on
+> Windows/Linux the native window controls are part of the frame, so a transparent
+> title bar there is a larger feature — not yet wired up. The default (`.Default`)
+> is unchanged on every platform.
+
 ## Lifecycle
 
 `window_close` (and the window's close button) run your `should_quit` hook first —

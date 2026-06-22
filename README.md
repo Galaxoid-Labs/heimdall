@@ -51,7 +51,7 @@ irm https://raw.githubusercontent.com/galaxoid-labs/heimdall/main/install.ps1 | 
 Then (open a new terminal first, or `. ~/.heimdall/env`):
 
 ```sh
-heimdall new myapp                 # vanilla frontend (or --frontend sveltekit)
+heimdall new myapp                 # vanilla frontend (or --frontend alpine|sveltekit)
 cd myapp && heimdall dev           # a window opens, wired to Odin
 ```
 
@@ -63,11 +63,12 @@ You still need [Odin](https://odin-lang.org/docs/install/) and a JS runtime
 ([Node.js](https://nodejs.org) or [Bun](https://bun.sh)) to *build* apps —
 `heimdall doctor` checks everything.
 
-Pick a frontend with `--frontend`: `vanilla` (dependency-free, offline) or
-`sveltekit` (runs the official `sv create` — you pick template + TypeScript — and
-heimdall wires it for static embedding). Choose a package manager with
-`--pm bun|npm|pnpm|yarn|deno` (default bun; vanilla is dependency-free so any
-works). SvelteKit also takes `--add <sv-addon>` (repeatable) for Svelte add-ons,
+Pick a frontend with `--frontend`: `vanilla` (dependency-free, offline), `alpine`
+(adds [Alpine.js](https://alpinejs.dev) for lightweight reactivity — vendored, so
+still dependency-free and offline), or `sveltekit` (runs the official `sv create`
+— you pick template + TypeScript — and heimdall wires it for static embedding).
+Choose a package manager with `--pm bun|npm|pnpm|yarn|deno` (default bun; vanilla
+and alpine are dependency-free so any works). SvelteKit also takes `--add <sv-addon>` (repeatable) for Svelte add-ons,
 e.g. `--add tailwindcss=plugins:typography`; heimdall adds the static adapter
 itself — don't add `sveltekit-adapter`.
 
@@ -230,7 +231,7 @@ a GitHub Actions workflow for signed releases — see [`docs/ci.md`](docs/ci.md)
 
 | Command | What it does |
 | --- | --- |
-| `new <name>` | Scaffold a project (`--frontend vanilla\|sveltekit`, `--pm …`, `--add <sv-addon>`). |
+| `new <name>` | Scaffold a project (`--frontend vanilla\|alpine\|sveltekit`, `--pm …`, `--add <sv-addon>`). |
 | `dev` | Run the dev server + app; reload on change. |
 | `build` | Frontend build → embed → compile a release binary. |
 | `bundle` | Package the app — macOS `.app` (`--sign`/`--notarize`), Linux `.deb` + `.rpm`, or Windows installer `.exe` + `.zip`. |
@@ -293,8 +294,9 @@ Full docs live in **[`docs/`](docs/guide/getting-started.md)** (a
 Heimdall is released under the [MIT License](LICENSE) — © 2026 Galaxoid Labs.
 Use it in open-source or commercial apps; the binaries you build are yours.
 
-Vendored third-party components keep their own licenses — notably the Microsoft
-WebView2 loader under [`heimdall/webview2/`](heimdall/webview2/).
+Vendored third-party components keep their own licenses — the Microsoft WebView2
+loader under [`heimdall/webview2/`](heimdall/webview2/), and [Alpine.js](https://alpinejs.dev)
+(MIT, bundled into the CLI and written into `--frontend alpine` projects).
 
 > "Heimdall" is a working name — find/replace `heimdall` / `Heimdall` / `hd` to
 > rename.

@@ -106,9 +106,21 @@ darwin_backend_create :: proc(app: ^App, devtools: bool) -> bool {
 	if app.cfg.resizable {
 		style |= NS_RESIZABLE_MASK
 	}
+	// Transparent/Hidden title bar: full-size content view so the web content fills
+	// the whole window, including behind the title bar.
+	if app.cfg.titlebar != .Default {
+		style |= NS_FULLSIZE_CONTENT_MASK
+	}
 	win := msg(id, cls("NSWindow"), "alloc")
 	win = msg(id, oc(win), "initWithContentRect:styleMask:backing:defer:", rect, style, NS.UInteger(2), bool(false))
 	dwn.window = win
+
+	// Title-bar style (App_Config.titlebar). Transparent makes the title bar
+	// transparent so the web content shows through behind it; the title text and
+	// traffic lights are kept (they float over the content).
+	if app.cfg.titlebar == .Transparent {
+		msg(nil, oc(win), "setTitlebarAppearsTransparent:", bool(true))
+	}
 
 	// WKWebViewConfiguration + user content controller (the message channel).
 	cfg := msg(id, oc(msg(id, cls("WKWebViewConfiguration"), "alloc")), "init")
@@ -156,6 +168,27 @@ darwin_backend_create :: proc(app: ^App, devtools: bool) -> bool {
 		msg(nil, oc(prefs), "setValue:forKey:", yes, nsstring("developerExtrasEnabled"))
 		if msg(bool, oc(wk), "respondsToSelector:", NS.sel_registerName("setInspectable:")) {
 			msg(nil, oc(wk), "setInspectable:", bool(true))
+		}
+	}
+
+	// WebGPU (App_Config.webgpu). Recent WebKit (Safari 26+) enables it by default;
+	// on older WebKit it's behind a feature flag. Toggle it via the private
+	// WKPreferences feature API, guarded by respondsToSelector: so it's a safe
+	// no-op where the API or the "WebGPU" feature isn't present. (WebGL is always on.)
+	if app.cfg.webgpu {
+		prefs := msg(id, oc(cfg), "preferences")
+		wkpref := cls("WKPreferences")
+		if msg(bool, oc(wkpref), "respondsToSelector:", NS.sel_registerName("_features")) &&
+		   msg(bool, oc(prefs), "respondsToSelector:", NS.sel_registerName("_setEnabled:forFeature:")) {
+			features := msg(id, oc(wkpref), "_features")
+			n := msg(NS.UInteger, oc(features), "count")
+			for i in 0 ..< n {
+				f := msg(id, oc(features), "objectAtIndex:", i)
+				kc := msg(cstring, oc(msg(id, oc(f), "key")), "UTF8String")
+				if kc != nil && string(kc) == "WebGPU" {
+					msg(nil, oc(prefs), "_setEnabled:forFeature:", bool(true), f)
+				}
+			}
 		}
 	}
 
@@ -727,6 +760,8 @@ dwn_dispatch_cb :: proc "c" (ctx: rawptr) {
 NS_FULLSCREEN_MASK :: NS.UInteger(1 << 14) // NSWindowStyleMaskFullScreen
 @(private = "file")
 NS_RESIZABLE_MASK :: NS.UInteger(1 << 3) // NSWindowStyleMaskResizable
+@(private = "file")
+NS_FULLSIZE_CONTENT_MASK :: NS.UInteger(1 << 15) // NSWindowStyleMaskFullSizeContentView
 @(private = "file")
 NS_VIEW_WIDTH_SIZABLE :: NS.UInteger(1 << 1) // NSViewWidthSizable
 @(private = "file")

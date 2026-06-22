@@ -107,6 +107,12 @@ lock it down while developing.
   `node_modules`, works offline, instant. Great for small apps or as a starting
   point. (`dev` uses a tiny Bun static server; there's no HMR — refresh to see
   changes.)
+- **`alpine`** — the same dependency-free, no-bundler setup as `vanilla`, plus
+  [Alpine.js](https://alpinejs.dev) for lightweight reactivity (`x-data`,
+  `x-model`, …). Alpine is **vendored** into `web/src/vendor/` (a pinned, minified
+  build), so the app stays offline and `node_modules`-free; the scaffold includes
+  an `x-data` demo wired to an Odin command through the typed client. Same
+  refresh-to-reload dev loop as `vanilla`.
 - **`sveltekit`** — delegates to the official [`sv create`](https://svelte.dev/docs/cli):
   you pick the template and TypeScript/JSDoc interactively, and heimdall configures
   it for static embedding (`@sveltejs/adapter-static`, `ssr = false`, an

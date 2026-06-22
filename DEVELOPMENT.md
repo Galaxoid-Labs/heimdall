@@ -95,6 +95,22 @@ Specific deltas to confirm:
       and confirm `hd.config_dir/data_dir/cache_dir/log_dir(app)` resolve to the
       expected OS locations, are namespaced by `app_id`, and are created. Also
       check the built-in `paths` JS service (`await paths.config()` → `{path}`).
+- [ ] **WebGPU (D43):** `App_Config.webgpu = true` — only the macOS backend
+      compiles on the dev machine; the **Linux** (`webkit_settings_get_all_features`
+      + `set_feature_enabled`) and **Windows** (`get_browser_args` →
+      `--enable-unsafe-webgpu`) paths are written blind. On each platform: confirm
+      it compiles, then load a WebGPU page (`navigator.gpu` truthy / a small
+      `requestAdapter()` test) with `webgpu = true` vs `false`. Verify the exact
+      feature identifier is `"WebGPU"` on Linux/WebKitGTK and macOS/WebKit (adjust
+      the string match if the engine names it differently).
+      - **Secure context (all platforms, esp. macOS):** `navigator.gpu` (and
+        `crypto.subtle`, service workers) only exist in a secure context. Confirm
+        `window.isSecureContext === true` on the `app://localhost/` page. Linux
+        (`register_uri_scheme_as_secure`) and Windows (`TreatAsSecure`) mark it
+        secure explicitly; macOS relies on WebKit treating the `WKURLSchemeHandler`
+        `app://` scheme as trustworthy — if `isSecureContext` is false there,
+        WebGPU is unavailable regardless of the `webgpu` flag and the scheme needs
+        a secure-context fix.
 - [ ] **Dev console (D34):** dev build shows the inspector, release hides it;
       `devtools = .On` forces it on in a release build, `.Off` off in dev.
       (Linux: WebKitGTK inspector; Windows: Edge DevTools.)

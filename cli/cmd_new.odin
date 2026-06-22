@@ -6,7 +6,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:terminal"
 
-// `heimdall new <name> [--frontend vanilla|sveltekit] [--pm bun|npm|pnpm|yarn|deno] [--framework <path>]`
+// `heimdall new <name> [--frontend vanilla|alpine|sveltekit] [--pm bun|npm|pnpm|yarn|deno] [--framework <path>]`
 //
 // Scaffolds the Odin/heimdall shell (main.odin, services.odin, heimdall.toml,
 // vendored heimdall/) plus a frontend. Two frontends today:
@@ -65,6 +65,15 @@ FRONTENDS := []Frontend {
 		scaffold = scaffold_vanilla,
 	},
 	{
+		key = "alpine",
+		blurb = "Alpine.js — lightweight reactivity, no build step (vendored, offline; zero deps)",
+		dist_dir = "web/dist",
+		bindings = "web/src/heimdall.gen",
+		uses_pm = true,
+		deps = false,
+		scaffold = scaffold_alpine,
+	},
+	{
 		key = "sveltekit",
 		blurb = "official SvelteKit via `sv create` (interactive), patched for static embedding",
 		dist_dir = "web/build",
@@ -101,7 +110,7 @@ cmd_new :: proc(args: []string) {
 
 	if name == "" {
 		fmt.eprintln(
-			"usage: heimdall new <name> [--frontend vanilla|sveltekit] [--pm bun|npm|pnpm|yarn|deno]\n" +
+			"usage: heimdall new <name> [--frontend vanilla|alpine|sveltekit] [--pm bun|npm|pnpm|yarn|deno]\n" +
 			"                          [--add <sv-addon>]... [--framework <path>]\n" +
 			"  --add  (sveltekit only, repeatable) an `sv` add-on, e.g. --add tailwindcss=plugins:typography",
 		)
@@ -278,6 +287,25 @@ scaffold_vanilla :: proc(ctx: ^Scaffold_Ctx) -> bool {
 	return true
 }
 
+// Alpine.js frontend: vanilla's dependency-free, no-bundler setup (same dev.js /
+// build.js / package.json) plus a vendored Alpine and an x-data demo. Alpine's
+// CDN build self-initializes; build.js copies web/src/ (incl. vendor/) into dist/.
+scaffold_alpine :: proc(ctx: ^Scaffold_Ctx) -> bool {
+	d := ctx.dir
+	write_file_p(cat(d, "/web/index.html"), render(TMPL_ALPINE_INDEX_HTML, ctx))
+	write_file_p(cat(d, "/web/src/main.js"), render(TMPL_ALPINE_MAIN_JS, ctx))
+	// Vendored Alpine (offline, no package install) — written verbatim from the blob.
+	write_file_p_bytes(cat(d, "/web/src/vendor/alpine.min.js"), ALPINE_JS)
+	if ctx.pm.key == "deno" {
+		write_file_p(cat(d, "/web/deno.json"), render(TMPL_DENO_JSON, ctx))
+	} else {
+		write_file_p(cat(d, "/web/package.json"), render(TMPL_PACKAGE_JSON, ctx))
+	}
+	write_file_p(cat(d, "/web/dev.js"), render(TMPL_DEV_JS, ctx))
+	write_file_p(cat(d, "/web/build.js"), render(TMPL_BUILD_JS, ctx))
+	return true
+}
+
 // ---- sveltekit frontend (delegates to `sv create`) ------------------------
 
 @(private = "file")
@@ -443,12 +471,28 @@ write_file_p :: proc(path, content: string) {
 	write_file(path, content)
 }
 
+// write raw bytes (e.g. a vendored blob), ensuring the parent directory exists.
+@(private = "file")
+write_file_p_bytes :: proc(path: string, data: []u8) {
+	mkdir_p(filepath.dir(path))
+	if werr := os.write_entire_file(path, data); werr != nil {
+		fmt.eprintfln("heimdall new: failed to write %s: %v", path, werr)
+		os.exit(1)
+	}
+}
+
 // ---- shared templates -----------------------------------------------------
 
 // The default app icon (the Heimdall mark, rendered from docs/public/logo.svg),
 // embedded into the CLI and written into every new project as icon.png.
 @(private = "file")
 ICON_PNG := #load("icon.png")
+
+// Alpine.js (MIT) — the self-initializing CDN build, vendored so `--frontend alpine`
+// stays dependency-free and offline (embedded into the CLI, written into the
+// project's web/src/vendor/). Bump by replacing cli/vendor/alpine.min.js.
+@(private = "file")
+ALPINE_JS := #load("vendor/alpine.min.js")
 
 TMPL_MAIN :: `package main
 
@@ -703,6 +747,56 @@ document.querySelector("#go").addEventListener("click", async () => {
   const name = document.querySelector("#name").value;
   const { message } = await greeting.greet({ name });   // typed: args + result
   document.querySelector("#out").textContent = message;
+});
+
+// Native menu clicks arrive as a "menu" event with the item's id.
+on("menu", (e) => {
+  console.log("menu:", e.id);
+});
+
+// Deep link: if you enable a URL scheme (App_Config.url_schemes + [bundle].schemes),
+// opening myapp://… delivers the URL here.
+on("open-url", (e) => {
+  console.log("open-url:", e.url);
+});
+`
+
+// ---- alpine frontend templates --------------------------------------------
+
+TMPL_ALPINE_INDEX_HTML :: `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>__TITLE__</title>
+  <!-- Alpine, vendored & embedded (offline). The CDN build self-initializes on
+       DOMContentLoaded; main.js (loaded after) registers the x-data component. -->
+  <script defer src="/src/vendor/alpine.min.js"></script>
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body x-data="greeter">
+  <h1>__TITLE__</h1>
+  <input x-model="name">
+  <button @click="greet">greet</button>
+  <p x-text="message"></p>
+</body>
+</html>
+`
+
+TMPL_ALPINE_MAIN_JS :: `// Typed client generated from your Odin command types (heimdall generate-bindings,
+// also auto-run by dev/build). Or skip it and use window.heimdall.invoke(...) directly.
+import { greeting, on } from "./heimdall.gen.js";
+
+// Register Alpine components before Alpine starts. The vendored CDN build exposes
+// window.Alpine and fires "alpine:init" on startup.
+document.addEventListener("alpine:init", () => {
+  Alpine.data("greeter", () => ({
+    name: "world",
+    message: "",
+    async greet() {
+      const { message } = await greeting.greet({ name: this.name });   // typed
+      this.message = message;
+    },
+  }));
 });
 
 // Native menu clicks arrive as a "menu" event with the item's id.
