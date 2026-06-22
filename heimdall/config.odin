@@ -13,4 +13,4 @@ HEIMDALL_DEV :: #config(HEIMDALL_DEV, false)
 // without opening a window. (Wired in Phase 6.)
 HEIMDALL_SCHEMA :: #config(HEIMDALL_SCHEMA, false)
 
-VERSION :: "0.1.0"
+VERSION :: "0.2.0"

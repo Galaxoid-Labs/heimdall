@@ -6,7 +6,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
-VERSION :: "0.1.0"
+VERSION :: "0.2.0"
 
 // Result of running a child process with captured output.
 Run :: struct {
