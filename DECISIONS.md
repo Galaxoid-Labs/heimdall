@@ -1033,9 +1033,16 @@ self-initializing CDN build is the only form that works dropped-in with no
 bundler. Result: `--frontend alpine` stays dependency-free, `node_modules`-free,
 and fully offline — matching *why* Alpine is appealing. The demo `index.html` uses
 `x-data`/`x-model`/`@click`; `main.js` registers an `Alpine.data` component on
-`alpine:init` that calls an Odin command through the typed client. Load order is
-safe: both deferred scripts run before `DOMContentLoaded` (when Alpine starts), so
-`main.js` registers its component before Alpine initializes.
+`alpine:init` that calls an Odin command through the typed client.
+
+**Load order (bug fixed post-merge):** the CDN build calls `Alpine.start()` — which
+fires `alpine:init` and scans the DOM — *the moment the script executes*, NOT on
+`DOMContentLoaded` (an earlier assumption here was wrong, and shipped a broken demo:
+Alpine scanned before `main.js` registered `greeter`, so the component was empty).
+Fix: `main.js` adds the `alpine:init` listener first, then **injects** the vendored
+Alpine `<script>` itself (`index.html` no longer loads Alpine). That guarantees the
+component is registered before Alpine loads/starts, independent of any
+module-vs-`defer` ordering subtlety.
 
 **Maintenance:** bump by replacing `cli/vendor/alpine.min.js` (keep the MIT
 attribution header). Alpine is MIT; noted in README's license section.

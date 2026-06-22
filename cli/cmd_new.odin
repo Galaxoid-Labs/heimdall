@@ -768,9 +768,7 @@ TMPL_ALPINE_INDEX_HTML :: `<!doctype html>
 <head>
   <meta charset="utf-8">
   <title>__TITLE__</title>
-  <!-- Alpine, vendored & embedded (offline). The CDN build self-initializes on
-       DOMContentLoaded; main.js (loaded after) registers the x-data component. -->
-  <script defer src="/src/vendor/alpine.min.js"></script>
+  <!-- main.js registers the Alpine component, THEN loads the vendored Alpine. -->
   <script type="module" src="/src/main.js"></script>
 </head>
 <body x-data="greeter">
@@ -786,8 +784,10 @@ TMPL_ALPINE_MAIN_JS :: `// Typed client generated from your Odin command types (
 // also auto-run by dev/build). Or skip it and use window.heimdall.invoke(...) directly.
 import { greeting, on } from "./heimdall.gen.js";
 
-// Register Alpine components before Alpine starts. The vendored CDN build exposes
-// window.Alpine and fires "alpine:init" on startup.
+// Alpine's CDN build calls Alpine.start() the moment it loads (firing "alpine:init"
+// and scanning the DOM right away), so the x-data components must be registered
+// BEFORE Alpine loads. We add the listener first, then inject the vendored Alpine
+// script — guaranteeing "greeter" is defined before Alpine scans for it.
 document.addEventListener("alpine:init", () => {
   Alpine.data("greeter", () => ({
     name: "world",
@@ -798,6 +798,11 @@ document.addEventListener("alpine:init", () => {
     },
   }));
 });
+
+// Vendored Alpine (offline). Loaded here, after the listener above is registered.
+const alpine = document.createElement("script");
+alpine.src = "/src/vendor/alpine.min.js";
+document.head.appendChild(alpine);
 
 // Native menu clicks arrive as a "menu" event with the item's id.
 on("menu", (e) => {
